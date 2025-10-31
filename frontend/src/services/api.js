@@ -24,10 +24,7 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   response => response,
   error => {
-    if (error.response?.status === 401) {
-      // Redirect to login on unauthorized
-      window.location.href = '/login'
-    }
+    // Don't auto-redirect on 401 - let router handle it
     return Promise.reject(error)
   }
 )

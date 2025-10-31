@@ -41,8 +41,14 @@ const router = useRouter()
 const route = useRoute()
 const isAuthenticated = ref(false)
 
-// Check authentication on mount and route changes
+// Check authentication status
 const checkAuth = async () => {
+  // Only check auth if not on login page
+  if (route.path === '/login') {
+    isAuthenticated.value = false
+    return
+  }
+
   try {
     await api.checkAuth()
     isAuthenticated.value = true
@@ -62,6 +68,9 @@ const handleLogout = async () => {
   }
 }
 
+// Check auth on mount and when navigating to protected routes
 onMounted(checkAuth)
-watch(() => route.path, checkAuth)
+watch(() => route.path, () => {
+  checkAuth()
+})
 </script>
