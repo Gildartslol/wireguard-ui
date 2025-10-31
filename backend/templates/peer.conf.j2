@@ -1,0 +1,13 @@
+# {{ peer_name }} - WireGuard Configuration
+# Generated: {{ timestamp }}
+
+[Interface]
+PrivateKey = {{ private_key }}
+Address = {{ address }}
+DNS = {{ dns }}
+
+[Peer]
+PublicKey = {{ server_public_key }}
+Endpoint = {{ endpoint }}
+AllowedIPs = {{ allowed_ips }}
+PersistentKeepalive = 25

@@ -1,0 +1,337 @@
+from flask import Blueprint, request, jsonify, current_app, send_file
+from flask_login import login_required, current_user
+from wg_manager import WireGuardManager
+from models import Peer, db
+from io import BytesIO
+import logging
+
+logger = logging.getLogger(__name__)
+
+peers_bp = Blueprint('peers', __name__, url_prefix='/api/peers')
+
+
+@peers_bp.route('', methods=['GET'])
+@login_required
+def list_peers():
+    """
+    List all configured peers from database
+
+    Returns:
+        200: List of peers
+        500: Error listing peers
+    """
+    try:
+        peers = Peer.query.order_by(Peer.created_at.desc()).all()
+        peers_data = [peer.to_dict() for peer in peers]
+
+        return jsonify(peers_data), 200
+
+    except Exception as e:
+        logger.error(f"Error listing peers: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@peers_bp.route('', methods=['POST'])
+@login_required
+def create_peer():
+    """
+    Create new peer and add to WireGuard
+
+    Request JSON:
+        {
+            "name": "Client 1",
+            "public_key": "peer_public_key",
+            "allowed_ips": "10.0.0.2/32",
+            "description": "Description",
+            "preshared_key": "optional_preshared_key"
+        }
+
+    Returns:
+        201: Peer created successfully
+        400: Invalid data
+        409: Peer already exists
+        500: Error creating peer
+    """
+    try:
+        data = request.get_json()
+
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
+
+        # Validate required fields
+        name = data.get('name')
+        public_key = data.get('public_key')
+        allowed_ips = data.get('allowed_ips')
+
+        if not all([name, public_key, allowed_ips]):
+            return jsonify({'error': 'Name, public_key, and allowed_ips are required'}), 400
+
+        # Check if peer already exists
+        existing_peer = Peer.query.filter_by(public_key=public_key).first()
+        if existing_peer:
+            return jsonify({'error': 'Peer with this public key already exists'}), 409
+
+        # Convert allowed_ips to list if it's a string
+        if isinstance(allowed_ips, str):
+            allowed_ips_list = [ip.strip() for ip in allowed_ips.split(',')]
+        else:
+            allowed_ips_list = allowed_ips
+
+        # Add peer to WireGuard
+        wg_interface = current_app.config.get('WG_INTERFACE', 'wg0')
+        wg_manager = WireGuardManager(wg_interface)
+
+        wg_manager.add_peer(
+            public_key=public_key,
+            allowed_ips=allowed_ips_list,
+            preshared_key=data.get('preshared_key')
+        )
+
+        # Save peer to database
+        peer = Peer(
+            public_key=public_key,
+            name=name,
+            allowed_ips=','.join(allowed_ips_list),
+            endpoint=data.get('endpoint'),
+            description=data.get('description'),
+            preshared_key=data.get('preshared_key'),
+            created_by=current_user.id
+        )
+
+        db.session.add(peer)
+        db.session.commit()
+
+        logger.info(f"Created peer: {name} ({public_key[:12]}...) by user {current_user.username}")
+
+        return jsonify(peer.to_dict()), 201
+
+    except ValueError as e:
+        logger.error(f"Validation error creating peer: {e}")
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        logger.error(f"Error creating peer: {e}")
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+
+@peers_bp.route('/<public_key>', methods=['GET'])
+@login_required
+def get_peer(public_key):
+    """
+    Get peer details
+
+    Returns:
+        200: Peer data
+        404: Peer not found
+        500: Error getting peer
+    """
+    try:
+        peer = Peer.query.filter_by(public_key=public_key).first()
+
+        if not peer:
+            return jsonify({'error': 'Peer not found'}), 404
+
+        return jsonify(peer.to_dict()), 200
+
+    except Exception as e:
+        logger.error(f"Error getting peer: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@peers_bp.route('/<public_key>', methods=['DELETE'])
+@login_required
+def delete_peer(public_key):
+    """
+    Delete peer from WireGuard and database
+
+    Returns:
+        200: Peer deleted successfully
+        404: Peer not found
+        500: Error deleting peer
+    """
+    try:
+        # Get peer from database
+        peer = Peer.query.filter_by(public_key=public_key).first()
+
+        if not peer:
+            return jsonify({'error': 'Peer not found'}), 404
+
+        # Remove from WireGuard
+        wg_interface = current_app.config.get('WG_INTERFACE', 'wg0')
+        wg_manager = WireGuardManager(wg_interface)
+
+        try:
+            wg_manager.remove_peer(public_key)
+        except Exception as wg_error:
+            logger.warning(f"WireGuard removal failed (peer may not exist in WG): {wg_error}")
+
+        # Delete from database
+        db.session.delete(peer)
+        db.session.commit()
+
+        logger.info(f"Deleted peer: {peer.name} ({public_key[:12]}...) by user {current_user.username}")
+
+        return jsonify({'message': 'Peer deleted successfully'}), 200
+
+    except Exception as e:
+        logger.error(f"Error deleting peer: {e}")
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+
+@peers_bp.route('/generate-keys', methods=['POST'])
+@login_required
+def generate_keys():
+    """
+    Generate new WireGuard key pair
+
+    Returns:
+        200: Generated keys
+        500: Error generating keys
+    """
+    try:
+        keys = WireGuardManager.generate_keypair()
+
+        return jsonify(keys), 200
+
+    except Exception as e:
+        logger.error(f"Error generating keys: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@peers_bp.route('/<public_key>/config', methods=['GET'])
+@login_required
+def get_peer_config(public_key):
+    """
+    Generate and download peer configuration file
+
+    Query Parameters:
+        private_key: Peer's private key (required)
+
+    Returns:
+        200: Configuration file
+        400: Missing private key
+        404: Peer not found
+        500: Error generating config
+    """
+    try:
+        # Get private key from query params
+        private_key = request.args.get('private_key')
+
+        if not private_key:
+            return jsonify({'error': 'private_key query parameter required'}), 400
+
+        # Get peer from database
+        peer = Peer.query.filter_by(public_key=public_key).first()
+
+        if not peer:
+            return jsonify({'error': 'Peer not found'}), 404
+
+        # Get server configuration
+        server_public_key = current_app.config.get('WG_SERVER_PUBLIC_KEY')
+        server_address = current_app.config.get('WG_SERVER_ADDRESS', '').split('/')[0]  # Get IP without CIDR
+        server_port = current_app.config.get('WG_SERVER_PORT', 51820)
+
+        if not server_public_key:
+            return jsonify({'error': 'Server public key not configured'}), 500
+
+        # Determine server endpoint (could be from env or auto-detected)
+        # For now, use a placeholder that the admin should configure
+        endpoint = f"{server_address}:{server_port}"
+
+        # Get peer's IP address from allowed_ips (first IP)
+        allowed_ips = peer.allowed_ips.split(',')
+        peer_address = allowed_ips[0] if allowed_ips else "10.0.0.2/32"
+
+        # Generate config
+        config_content = WireGuardManager.generate_peer_config(
+            peer_name=peer.name,
+            private_key=private_key,
+            server_public_key=server_public_key,
+            endpoint=endpoint,
+            allowed_ips=['0.0.0.0/0', '::/0'],  # Route all traffic through VPN
+            address=peer_address,
+            dns="1.1.1.1"
+        )
+
+        # Create file in memory
+        config_file = BytesIO(config_content.encode('utf-8'))
+        config_file.seek(0)
+
+        # Return as downloadable file
+        return send_file(
+            config_file,
+            as_attachment=True,
+            download_name=f"{peer.name.replace(' ', '_')}.conf",
+            mimetype='text/plain'
+        )
+
+    except Exception as e:
+        logger.error(f"Error generating config: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@peers_bp.route('/<public_key>', methods=['PUT'])
+@login_required
+def update_peer(public_key):
+    """
+    Update peer information
+
+    Request JSON:
+        {
+            "name": "Updated Name",
+            "allowed_ips": "10.0.0.2/32,10.0.1.0/24",
+            "description": "Updated description"
+        }
+
+    Returns:
+        200: Peer updated successfully
+        404: Peer not found
+        400: Invalid data
+        500: Error updating peer
+    """
+    try:
+        data = request.get_json()
+
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
+
+        # Get peer from database
+        peer = Peer.query.filter_by(public_key=public_key).first()
+
+        if not peer:
+            return jsonify({'error': 'Peer not found'}), 404
+
+        # Update database fields
+        if 'name' in data:
+            peer.name = data['name']
+        if 'description' in data:
+            peer.description = data['description']
+        if 'allowed_ips' in data:
+            # Convert to list if string
+            if isinstance(data['allowed_ips'], str):
+                allowed_ips_list = [ip.strip() for ip in data['allowed_ips'].split(',')]
+            else:
+                allowed_ips_list = data['allowed_ips']
+
+            # Update WireGuard
+            wg_interface = current_app.config.get('WG_INTERFACE', 'wg0')
+            wg_manager = WireGuardManager(wg_interface)
+            wg_manager.update_peer(public_key, allowed_ips=allowed_ips_list)
+
+            # Update database
+            peer.allowed_ips = ','.join(allowed_ips_list)
+
+        db.session.commit()
+
+        logger.info(f"Updated peer: {peer.name} ({public_key[:12]}...) by user {current_user.username}")
+
+        return jsonify(peer.to_dict()), 200
+
+    except ValueError as e:
+        logger.error(f"Validation error updating peer: {e}")
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        logger.error(f"Error updating peer: {e}")
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500

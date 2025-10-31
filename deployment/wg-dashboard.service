@@ -1,0 +1,26 @@
+[Unit]
+Description=WireGuard UI Dashboard
+After=network.target wg-quick@wg0.service
+Wants=wg-quick@wg0.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/wireguard-ui/backend
+Environment="PATH=/opt/wireguard-ui/backend/venv/bin"
+Environment="FLASK_ENV=production"
+ExecStart=/opt/wireguard-ui/backend/venv/bin/python app.py
+Restart=always
+RestartSec=10
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=wg-dashboard
+
+[Install]
+WantedBy=multi-user.target
