@@ -55,11 +55,23 @@ class WireGuardManager:
                 transfer_rx = getattr(peer, 'receive_bytes', 0) or 0
                 transfer_tx = getattr(peer, 'transmit_bytes', 0) or 0
 
+                if last_handshake is None:
+                    stats_obj = getattr(peer, 'statistics', None) or getattr(peer, 'stats', None)
+                    if stats_obj:
+                        last_handshake = getattr(stats_obj, 'last_handshake', last_handshake)
+                        if not last_handshake:
+                            last_handshake = getattr(stats_obj, 'latest_handshake', last_handshake)
+                        transfer_rx = getattr(stats_obj, 'rx_bytes', transfer_rx) or 0
+                        transfer_tx = getattr(stats_obj, 'tx_bytes', transfer_tx) or 0
+
+                if hasattr(last_handshake, 'timestamp'):  # handle datetime wrappers
+                    last_handshake = last_handshake.timestamp()
+
                 peer_data = {
                     'public_key': str(public_key_obj),
                     'endpoint': endpoint,
                     'allowed_ips': allowed_ips,
-                    'latest_handshake': last_handshake.isoformat() if last_handshake else None,
+                    'latest_handshake': last_handshake.isoformat() if hasattr(last_handshake, 'isoformat') else None,
                     'transfer_rx': transfer_rx,
                     'transfer_tx': transfer_tx,
                     'persistent_keepalive': getattr(peer, 'persistent_keepalive', None),
