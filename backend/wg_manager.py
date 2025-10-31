@@ -25,21 +25,45 @@ class WireGuardManager:
             config = device.get_config()
 
             peers = []
-            for peer in config.peers:
-                # Build endpoint string
+            for peer in self._iter_peers(config.peers):
+                endpoint_host = getattr(peer, 'endpoint_host', None)
+                endpoint_port = getattr(peer, 'endpoint_port', None)
+
+                # Newer versions expose a nested endpoint object instead of host/port attrs
+                if (not endpoint_host or not endpoint_port) and hasattr(peer, 'endpoint'):
+                    endpoint_obj = getattr(peer, 'endpoint')
+                    if endpoint_obj:
+                        endpoint_host = getattr(endpoint_obj, 'host', endpoint_host)
+                        endpoint_port = getattr(endpoint_obj, 'port', endpoint_port)
+
                 endpoint = None
-                if peer.endpoint_host and peer.endpoint_port:
-                    endpoint = f"{peer.endpoint_host}:{peer.endpoint_port}"
+                if endpoint_host and endpoint_port:
+                    endpoint = f"{endpoint_host}:{endpoint_port}"
+
+                public_key_obj = getattr(peer, 'public_key', None)
+                if public_key_obj is None:
+                    public_key_obj = getattr(peer, 'key', None)
+                if public_key_obj is None:
+                    public_key_obj = peer
+
+                allowed_ips_raw = getattr(peer, 'allowed_ips', None)
+                allowed_ips = []
+                if allowed_ips_raw:
+                    allowed_ips = [str(ip) for ip in allowed_ips_raw]
+
+                last_handshake = getattr(peer, 'last_handshake_time', None)
+                transfer_rx = getattr(peer, 'receive_bytes', 0) or 0
+                transfer_tx = getattr(peer, 'transmit_bytes', 0) or 0
 
                 peer_data = {
-                    'public_key': peer.public_key,
+                    'public_key': str(public_key_obj),
                     'endpoint': endpoint,
-                    'allowed_ips': [str(ip) for ip in peer.allowed_ips],
-                    'latest_handshake': peer.last_handshake_time.isoformat() if peer.last_handshake_time else None,
-                    'transfer_rx': peer.receive_bytes or 0,
-                    'transfer_tx': peer.transmit_bytes or 0,
-                    'persistent_keepalive': peer.persistent_keepalive,
-                    'connected': self._is_connected(peer.last_handshake_time)
+                    'allowed_ips': allowed_ips,
+                    'latest_handshake': last_handshake.isoformat() if last_handshake else None,
+                    'transfer_rx': transfer_rx,
+                    'transfer_tx': transfer_tx,
+                    'persistent_keepalive': getattr(peer, 'persistent_keepalive', None),
+                    'connected': self._is_connected(last_handshake)
                 }
                 peers.append(peer_data)
 
@@ -48,6 +72,15 @@ class WireGuardManager:
         except Exception as e:
             logger.error(f"Error getting active peers: {e}")
             raise
+
+    @staticmethod
+    def _iter_peers(peers):
+        """Handle API changes where peers can be list or dict."""
+        if peers is None:
+            return []
+        if isinstance(peers, dict):
+            return peers.values()
+        return peers
 
     def _is_connected(self, handshake_time: Optional[datetime]) -> bool:
         """
