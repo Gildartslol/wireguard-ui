@@ -47,6 +47,9 @@ instance/
 *~
 .DS_Store
 
+# Claude Code Configuration
+.claude/
+
 # Node.js / Frontend
 node_modules/
 frontend/node_modules/

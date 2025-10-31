@@ -1,1 +1,0 @@
-frontend:build:cd /Users/jorge/Documents/Claude/wireguard-UI/frontend && npm run build
