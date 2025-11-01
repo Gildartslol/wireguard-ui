@@ -5,7 +5,8 @@ Wants=wg-quick@wg0.service
 
 [Service]
 Type=simple
-User=root
+User=wireguard
+Group=wireguard
 WorkingDirectory=/opt/wireguard-ui/backend
 Environment="PATH=/opt/wireguard-ui/backend/venv/bin"
 Environment="FLASK_ENV=production"

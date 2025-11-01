@@ -4,243 +4,316 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-A web-based administration interface for managing WireGuard VPN connections on a pentesting jumphost. The system monitors Teltonika routers deployed at client sites that connect back via WireGuard tunnels.
-
-**Current Status**: This is a planning/documentation phase. The codebase structure has not yet been implemented. See `documentation.md` for the complete specification.
+A production-ready web-based administration interface for managing WireGuard VPN connections. Built to monitor Teltonika routers at client sites that connect via WireGuard tunnels. The system uses subprocess calls to the `wg` command-line tool for WireGuard management.
 
 ## Technology Stack
 
 **Backend**:
 - Flask 3.x with Flask-Login, Flask-SQLAlchemy, Flask-CORS
-- SQLite database (or PostgreSQL for scalability)
-- Python subprocess module for WireGuard integration
-- Authentication via Werkzeug password hashing
+- SQLite database (PostgreSQL compatible)
+- subprocess integration with `wg` command-line tool
+- Werkzeug password hashing
 
 **Frontend**:
-- Vue.js 3 with Vite
-- Tailwind CSS + DaisyUI components
-- Axios for HTTP, Chart.js for visualizations
+- Vue.js 3 with Composition API
+- Vite build tool
+- Tailwind CSS + DaisyUI
+- Vue Router, Axios, Chart.js
 
-**System Requirements**:
-- Linux server with WireGuard installed
+**Requirements**:
+- Linux server with WireGuard kernel module
 - Python 3.9+
 - Node.js 18+
-- Root/sudo access for WireGuard management
-
-## Project Structure
-
-When implementing, use this structure:
-
-```
-wireguard-ui/
-├── backend/
-│   ├── app.py              # Main Flask application
-│   ├── config.py           # Configuration management
-│   ├── models.py           # SQLAlchemy database models
-│   ├── auth.py             # Authentication logic
-│   ├── wg_manager.py       # WireGuard command interface
-│   ├── routes/
-│   │   ├── auth.py         # Login/logout endpoints
-│   │   ├── dashboard.py    # Dashboard API
-│   │   └── peers.py        # Peer management API
-│   ├── templates/
-│   │   └── peer.conf.j2    # Jinja2 config template
-│   ├── requirements.txt
-│   └── .env
-├── frontend/
-│   ├── src/
-│   │   ├── views/          # Login, Dashboard, Peers, History
-│   │   ├── components/     # PeerCard, ConnectionChart, ConfigGenerator
-│   │   └── services/
-│   │       └── api.js      # Axios API client
-│   ├── package.json
-│   └── vite.config.js
-└── configs/                # Generated peer configurations
-```
+- Dedicated `wireguard` system user with sudo access to `wg` commands
 
 ## Development Commands
 
-### Backend Setup
+### First-Time Setup
+
+**Backend**:
 ```bash
 cd backend
 python3 -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-pip install -r requirements.txt
-```
-
-### Backend Development
-```bash
-cd backend
 source venv/bin/activate
-python app.py              # Run development server
+pip install -r requirements.txt
+
+# Configure environment
+cp .env.example .env
+# Edit .env with your WireGuard settings
+
+# Setup wireguard system user and sudo permissions
+sudo bash ../deployment/setup_wireguard_user.sh
+
+# Initialize database
+python -c "from app import create_app; app = create_app(); app.app_context().push(); from models import db; db.create_all()"
+
+# Create admin user
+python create_admin.py
 ```
 
-### Frontend Setup
+**Frontend**:
 ```bash
 cd frontend
 npm install
 ```
 
-### Frontend Development
+### Development
+
+**Backend** (terminal 1):
+```bash
+cd backend
+source venv/bin/activate
+python app.py
+# Runs on http://localhost:5000
+```
+
+**Frontend** (terminal 2):
 ```bash
 cd frontend
-npm run dev               # Start Vite dev server
-npm run build             # Build for production
-npm run preview           # Preview production build
+npm run dev
+# Runs on http://localhost:5173, proxies API to :5000
 ```
 
-### Testing WireGuard Integration
+### Production Build
+
 ```bash
-sudo wg show              # Verify WireGuard is accessible
-sudo wg show wg0          # Show specific interface
+cd frontend
+npm run build
+# Outputs to frontend/dist/
+
+cd ../backend
+source venv/bin/activate
+python app.py
+# Flask serves frontend/dist/ static files at root
 ```
 
-## Core Architecture Patterns
+### Testing
 
-### WireGuard Manager (wg_manager.py)
+```bash
+# Backend tests
+cd backend
+source venv/bin/activate
+python -m pytest tests/
 
-The WireGuard manager is the critical integration layer. Key functions:
+# Frontend tests
+cd frontend
+npm run test
+```
 
-- `parse_wg_show()`: Parse output from `wg show` command into structured data
-- `get_active_peers()`: Return list of currently connected peers with handshake info
-- `add_peer(public_key, allowed_ips)`: Add peer to WireGuard interface
-- `remove_peer(public_key)`: Remove peer from WireGuard interface
-- `generate_keypair()`: Create new WireGuard public/private key pair
-- `generate_peer_config(...)`: Generate peer .conf file using Jinja2 template
+### Production Deployment
 
-**Security Critical**: Always use `subprocess.run()` with `shell=False` and validate all inputs before passing to WireGuard commands. Never expose raw command execution to API endpoints.
+```bash
+# Automated setup script (Ubuntu only)
+sudo bash deployment/setup.sh
+
+# Manual systemd setup
+sudo cp deployment/wg-dashboard.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable wg-dashboard
+sudo systemctl start wg-dashboard
+sudo systemctl status wg-dashboard
+
+# View logs
+sudo journalctl -u wg-dashboard -f
+```
+
+## Architecture
+
+### WireGuard Integration (wg_manager.py)
+
+Uses subprocess calls to the `wg` command-line tool for WireGuard management. **Critical**: Requires sudo access configured via `/etc/sudoers.d/wireguard-ui`.
+
+**Key Methods**:
+- `get_active_peers()`: Parses `wg show <interface> dump` output for real-time peer data
+- `add_peer(public_key, allowed_ips, endpoint=None, preshared_key=None)`: Executes `sudo wg set` to add peer
+- `remove_peer(public_key)`: Executes `sudo wg set <interface> peer <key> remove`
+- `update_peer(public_key, allowed_ips=None, endpoint=None)`: Executes `sudo wg set` to update peer
+- `generate_keypair()`: Calls `wg genkey` and `wg pubkey` to generate keys
+- `generate_peer_config(...)`: Generate client .conf file (string formatting)
+- `get_stats()`: Aggregate statistics from parsed peer data
+- `get_interface_info()`: Parses `wg show <interface>` for interface metadata
+
+**Implementation Notes**:
+- Uses `wg show <interface> dump` for machine-readable tab-separated output
+- Parses dump format: `public-key preshared-key endpoint allowed-ips handshake-sec rx-bytes tx-bytes keepalive`
+- Peer is considered "connected" if handshake occurred within last 3 minutes (backend/wg_manager.py:118-130)
+- Validates public keys (44 char base64 with trailing =)
+- All subprocess calls have 10-second timeout
+- Uses `sudo -n` (non-interactive) to ensure no password prompts
+- All exceptions are logged and re-raised for route handlers to catch
 
 ### Database Models (models.py)
 
-Three core models:
+**User**:
+- `id`, `username`, `password_hash`, `created_at`, `last_login`
+- Password hashing via Werkzeug
 
-1. **User**: Authentication (username, password_hash, last_login)
-2. **Peer**: WireGuard peer metadata (public_key, name, allowed_ips, description)
-3. **ConnectionHistory**: Historical tracking (peer_id, status, endpoint, latest_handshake, transfer stats)
+**Peer**:
+- `id`, `public_key` (unique, 44 chars), `name`, `allowed_ips`, `description`, `created_at`
+- Stored in database, synchronized with WireGuard kernel state
 
-Use SQLAlchemy ORM for all database operations to prevent SQL injection.
+**ConnectionHistory**:
+- `id`, `peer_id` (FK), `timestamp`, `event_type` (connected/disconnected), `endpoint`, `latest_handshake`, `transfer_rx`, `transfer_tx`
+- Used for historical tracking and bandwidth visualization
 
-### API Endpoints
+### API Routes
 
-**Authentication** (`routes/auth.py`):
-- `POST /api/auth/login`: Authenticate user
-- `POST /api/auth/logout`: End session
-- `GET /api/auth/check`: Verify session status
+**Authentication** (routes/auth.py):
+- `POST /api/auth/login`: Session-based auth, returns user info
+- `POST /api/auth/logout`: Destroy session
+- `GET /api/auth/check`: Verify session validity
 
-**Dashboard** (`routes/dashboard.py`):
-- `GET /api/dashboard/stats`: Overview statistics
-- `GET /api/dashboard/peers`: Active connections with real-time data
-- `GET /api/dashboard/history`: Connection history logs
+**Dashboard** (routes/dashboard.py):
+- `GET /api/dashboard/stats`: Aggregate stats (total peers, connected, bandwidth)
+- `GET /api/dashboard/peers`: Real-time peer list with status
+- `GET /api/dashboard/history?timerange={hour|day|week}`: Historical connection data
 
-**Peer Management** (`routes/peers.py`):
-- `GET /api/peers`: List all configured peers
-- `POST /api/peers`: Add new peer
-- `DELETE /api/peers/<public_key>`: Remove peer
-- `GET /api/peers/<public_key>/config`: Download peer config file
+**Peers** (routes/peers.py):
+- `GET /api/peers`: List all configured peers (DB + WireGuard state merge)
+- `POST /api/peers`: Add peer (creates in DB, adds to WireGuard)
+- `DELETE /api/peers/<public_key>`: Remove peer (removes from both)
+- `GET /api/peers/<public_key>/config`: Download .conf file
 - `POST /api/peers/generate`: Generate new keypair
 
 All routes except `/api/auth/login` require `@login_required` decorator.
 
-### Frontend State Management
+### Frontend Architecture
 
-Use Vue 3 Composition API with reactive state:
+**Views**:
+- `Login.vue`: Authentication form
+- `Dashboard.vue`: Real-time overview, auto-refreshes every 10 seconds
+- `Peers.vue`: Peer management (add, remove, configure)
+- `History.vue`: Connection history with time range filter
 
-- `api.js` service layer abstracts all backend calls
-- Auto-refresh dashboard every 10 seconds for real-time updates
-- Handle authentication state globally (store token/session)
-- Implement route guards to redirect unauthenticated users to login
+**Components**:
+- `PeerCard.vue`: Individual peer status display
+- `ConfigGenerator.vue`: Generate and download peer configs
 
-## Security Requirements
+**Services**:
+- `api.js`: Axios wrapper for all API calls, handles auth errors
 
-1. **Command Injection Prevention**: Validate all inputs before subprocess calls. Use allowlist for WireGuard commands.
+**Router** (router/index.js):
+- Vue Router with navigation guards
+- Redirects unauthenticated users to `/login`
+- Route guards check session validity via `/api/auth/check`
 
-2. **Authentication**:
-   - Hash passwords with Werkzeug's `generate_password_hash`
-   - Use Flask sessions with secure, httpOnly cookies
-   - Implement rate limiting on login attempts
+### Configuration
 
-3. **Authorization**: All WireGuard operations require authenticated session
-
-4. **Sudo Configuration**: Configure sudoers to allow Flask user to run specific WireGuard commands without password:
-   ```
-   flask-user ALL=(ALL) NOPASSWD: /usr/bin/wg, /usr/bin/wg-quick
-   ```
-
-5. **Network**: Bind Flask to 127.0.0.1, use nginx reverse proxy for external access with HTTPS
-
-6. **Logging**: Log all authentication attempts, peer additions/removals, and WireGuard config changes with timestamps and user attribution
-
-## Configuration
-
-Backend `.env` file:
-```
+**Backend .env**:
+```env
 FLASK_ENV=production
-SECRET_KEY=<generate-with-secrets.token_urlsafe(32)>
+SECRET_KEY=<secrets.token_urlsafe(32)>
 DATABASE_URI=sqlite:///wg_dashboard.db
 WG_INTERFACE=wg0
-WG_CONFIG_PATH=/etc/wireguard/wg0.conf
+WG_SERVER_ADDRESS=10.0.0.1/24
+WG_SERVER_PORT=51820
+WG_SERVER_PUBLIC_KEY=<your-server-public-key>
+SERVER_HOST=0.0.0.0
+SERVER_PORT=5000
 ```
 
-Frontend API configuration (src/services/api.js):
-```javascript
-const API_BASE_URL = process.env.VITE_API_URL || 'http://localhost:5000/api'
-```
+**Frontend** (vite.config.js):
+- Dev server on port 5173
+- Proxies `/api/*` to `http://localhost:5000` in development
+- Production build outputs to `frontend/dist/`
 
-## Deployment
+## Security Critical Points
 
-### Production Build
-```bash
-# Build frontend
-cd frontend
-npm run build
+1. **Dedicated System User**: Application runs as `wireguard` system user (not root) with limited sudo permissions
 
-# Flask will serve frontend/dist/ static files
-```
+2. **Sudoers Configuration**: Only specific WireGuard commands allowed via `/etc/sudoers.d/wireguard-ui`:
+   - `sudo wg show [interface] [dump]` - Read WireGuard state
+   - `sudo wg set <interface> peer ...` - Modify peers
+   - `wg genkey`, `wg pubkey`, `wg genpsk` - Key generation (no sudo needed)
 
-### Systemd Service
-Create `/etc/systemd/system/wg-dashboard.service` to run Flask app as daemon. Service must run as root or user with sudo access to WireGuard commands.
+3. **Command Injection Prevention**: All subprocess calls use list-based arguments (not shell=True). Public keys and IPs validated before passing to `wg` commands.
 
-```bash
-sudo systemctl enable wg-dashboard
-sudo systemctl start wg-dashboard
-sudo systemctl status wg-dashboard
-```
+4. **Public key validation**: All peer public keys validated against regex `^[A-Za-z0-9+/]{43}=$` before WireGuard operations (backend/wg_manager.py:408-418)
+
+5. **Authentication**: Flask-Login sessions with httpOnly cookies. Passwords hashed with Werkzeug.
+
+6. **CORS**: Configured for localhost:5173 in development. Update `config.py` for production origins.
+
+7. **Production**: Bind Flask to `0.0.0.0:5000`, use nginx reverse proxy with HTTPS for external access.
 
 ## Common Development Scenarios
 
-**Adding a new peer property**:
-1. Update `Peer` model in `models.py`
-2. Create database migration (or drop/recreate in development)
-3. Update peer creation in `routes/peers.py`
-4. Update frontend form in `Peers.vue`
-5. Update peer display in `PeerCard.vue` component
+**Adding a peer property**:
+1. Update `Peer` model in `models.py`, add column
+2. Create migration or recreate database (dev: delete `wg_dashboard.db`, run `db.create_all()`)
+3. Update peer creation in `routes/peers.py` POST endpoint
+4. Update frontend form in `Peers.vue` and display in `PeerCard.vue`
 
-**Changing WireGuard parsing logic**:
-1. Test changes against `wg show` output manually first
-2. Update `parse_wg_show()` in `wg_manager.py`
-3. Verify dashboard still displays peer data correctly
-4. Add error handling for malformed output
+**Debugging WireGuard connection**:
+1. Check WireGuard is running: `sudo wg show wg0`
+2. Verify wireguard user can run wg commands: `sudo -u wireguard sudo -n wg show`
+3. Test subprocess access directly:
+   ```bash
+   cd backend
+   source venv/bin/activate
+   python -c "from wg_manager import WireGuardManager; wg = WireGuardManager('wg0'); print(wg.get_active_peers())"
+   ```
+4. Check backend logs: `sudo journalctl -u wg-dashboard -f`
+5. Verify sudoers file: `sudo visudo -c -f /etc/sudoers.d/wireguard-ui`
 
-**Adding new dashboard statistic**:
-1. Add calculation in `routes/dashboard.py` stats endpoint
-2. Update frontend `Dashboard.vue` to display new stat
-3. Update auto-refresh logic if real-time updates needed
+**Handling wg show output parsing**:
+- Uses `wg show dump` format: tab-separated values with predictable column order
+- Handles `(none)` values for missing endpoint/preshared-key
+- Handshake time is seconds since last handshake (0 = never)
+- Transfer values are cumulative bytes (not human-readable format)
 
-## Important Implementation Notes
+**Adding a new dashboard statistic**:
+1. Update `get_stats()` in `wg_manager.py` or compute in `routes/dashboard.py`
+2. Return new stat in `/api/dashboard/stats` response
+3. Update `Dashboard.vue` to fetch and display
 
-- WireGuard public keys are 44 characters (base64 encoded)
-- Latest handshake timestamp indicates connection freshness (>2 minutes = likely disconnected)
-- Transfer RX/TX are cumulative bytes since peer was added
-- `wg show` output format is consistent but should be parsed defensively
-- Generated peer configs must include: Interface section (PrivateKey, Address) and Peer section (PublicKey, Endpoint, AllowedIPs)
-- Connection history recording should run as background task or cron job every 5 minutes
+## Critical Implementation Notes
+
+- WireGuard public keys are 44 characters, base64-encoded, ending with `=`
+- Peer is "connected" if handshake within last 3 minutes (configurable in `wg_manager.py:109`)
+- Transfer RX/TX are cumulative bytes since peer was added (kernel tracks this)
+- Latest handshake timestamp is UTC datetime from kernel
+- Generated peer configs must include Interface (PrivateKey, Address, DNS) and Peer (PublicKey, Endpoint, AllowedIPs) sections
+- Connection history should be populated by background task/cron (not yet implemented)
 
 ## Troubleshooting
 
-**"Permission denied" on wg commands**: Verify sudo configuration allows Flask user to run `/usr/bin/wg` without password
+**"Permission denied" or "sudo: a password is required"**:
+- Ensure wireguard user exists: `id wireguard`
+- Check sudoers file: `sudo cat /etc/sudoers.d/wireguard-ui`
+- Validate sudoers syntax: `sudo visudo -c -f /etc/sudoers.d/wireguard-ui`
+- Test sudo access: `sudo -u wireguard sudo -n wg show`
+- Systemd service runs as `wireguard` user (see deployment/wg-dashboard.service)
 
-**Peers not showing in dashboard**: Check that `WG_INTERFACE` environment variable matches actual interface name (run `sudo wg show` to verify)
+**Peers not showing in dashboard**:
+- Verify `WG_INTERFACE=wg0` in `.env` matches actual interface (`sudo wg show`)
+- Check backend logs for subprocess errors: `sudo journalctl -u wg-dashboard -f`
+- Test wg command access: `sudo -u wireguard sudo -n wg show wg0 dump`
+- Verify wireguard user has correct permissions
 
-**Frontend can't connect to backend**: Verify CORS configuration in Flask includes frontend origin, check that backend is running and accessible
+**Frontend can't connect to backend**:
+- Backend running: `sudo systemctl status wg-dashboard` or check http://localhost:5000/api/health
+- CORS: Check `config.py` allows frontend origin (localhost:5173 for dev)
+- Browser console: Check for auth redirects or CORS errors
 
-**Database locked errors**: SQLite doesn't handle concurrent writes well; consider PostgreSQL for production if seeing lock errors
+**Database locked errors**:
+- SQLite doesn't handle concurrent writes well
+- Use PostgreSQL in production: change `DATABASE_URI` in `.env`
+- Ensure only one Flask process is running
+
+**Infinite redirect loop on auth**:
+- Fixed in commit 7cb33dd
+- Ensure `/api/auth/check` endpoint returns correct session status
+- Check browser isn't blocking cookies
+
+**File permission errors**:
+- Ensure wireguard user owns application files: `sudo chown -R wireguard:wireguard /opt/wireguard-ui`
+- Check database file permissions: `ls -la backend/wg_dashboard.db`
+
+## Recent Changes
+
+- **Subprocess integration**: Uses `wg show` command parsing instead of Python library for better reliability
+- **Dedicated system user**: Application runs as `wireguard` user with limited sudo privileges
+- **Sudoers configuration**: Automated setup script creates `/etc/sudoers.d/wireguard-ui` with minimal permissions
+- **Auth fix**: Resolved infinite redirect issue (commit 7cb33dd)
+- **Production ready**: Systemd service, automated deployment script, secure user isolation

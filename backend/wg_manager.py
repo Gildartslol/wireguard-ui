@@ -1,98 +1,119 @@
-from wireguard_tools import WireguardDevice, WireguardKey, WireguardConfig, WireguardPeer
+import subprocess
+import re
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional
 import logging
-import re
 
 logger = logging.getLogger(__name__)
 
 
 class WireGuardManager:
-    """Manager class for WireGuard operations using wireguard-tools"""
+    """Manager class for WireGuard operations using subprocess and wg command"""
 
     def __init__(self, interface="wg0"):
         self.interface = interface
+        self.sudo_prefix = ["sudo", "-n"]  # -n means non-interactive (will fail if password required)
 
     def get_active_peers(self) -> List[Dict]:
         """
         Get list of currently connected peers with real-time data
 
+        Uses 'wg show <interface> dump' for machine-readable output
+
         Returns:
             List of peer dictionaries with connection information
         """
         try:
-            device = WireguardDevice.get(self.interface)
-            config = device.get_config()
+            cmd = self.sudo_prefix + ["wg", "show", self.interface, "dump"]
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                check=True,
+                timeout=10
+            )
 
+            lines = result.stdout.strip().split('\n')
+            if not lines or len(lines) < 1:
+                return []
+
+            # First line is interface info: private-key public-key listen-port fwmark
+            # Skip it and process peer lines
             peers = []
-            for peer in self._iter_peers(config.peers):
-                endpoint_host = getattr(peer, 'endpoint_host', None)
-                endpoint_port = getattr(peer, 'endpoint_port', None)
+            for line in lines[1:]:
+                if not line.strip():
+                    continue
 
-                # Newer versions expose a nested endpoint object instead of host/port attrs
-                if (not endpoint_host or not endpoint_port) and hasattr(peer, 'endpoint'):
-                    endpoint_obj = getattr(peer, 'endpoint')
-                    if endpoint_obj:
-                        endpoint_host = getattr(endpoint_obj, 'host', endpoint_host)
-                        endpoint_port = getattr(endpoint_obj, 'port', endpoint_port)
-
-                endpoint = None
-                if endpoint_host and endpoint_port:
-                    endpoint = f"{endpoint_host}:{endpoint_port}"
-
-                public_key_obj = getattr(peer, 'public_key', None)
-                if public_key_obj is None:
-                    public_key_obj = getattr(peer, 'key', None)
-                if public_key_obj is None:
-                    public_key_obj = peer
-
-                allowed_ips_raw = getattr(peer, 'allowed_ips', None)
-                allowed_ips = []
-                if allowed_ips_raw:
-                    allowed_ips = [str(ip) for ip in allowed_ips_raw]
-
-                last_handshake = getattr(peer, 'last_handshake_time', None)
-                transfer_rx = getattr(peer, 'receive_bytes', 0) or 0
-                transfer_tx = getattr(peer, 'transmit_bytes', 0) or 0
-
-                if last_handshake is None:
-                    stats_obj = getattr(peer, 'statistics', None) or getattr(peer, 'stats', None)
-                    if stats_obj:
-                        last_handshake = getattr(stats_obj, 'last_handshake', last_handshake)
-                        if not last_handshake:
-                            last_handshake = getattr(stats_obj, 'latest_handshake', last_handshake)
-                        transfer_rx = getattr(stats_obj, 'rx_bytes', transfer_rx) or 0
-                        transfer_tx = getattr(stats_obj, 'tx_bytes', transfer_tx) or 0
-
-                if hasattr(last_handshake, 'timestamp'):  # handle datetime wrappers
-                    last_handshake = last_handshake.timestamp()
-
-                peer_data = {
-                    'public_key': str(public_key_obj),
-                    'endpoint': endpoint,
-                    'allowed_ips': allowed_ips,
-                    'latest_handshake': last_handshake.isoformat() if hasattr(last_handshake, 'isoformat') else None,
-                    'transfer_rx': transfer_rx,
-                    'transfer_tx': transfer_tx,
-                    'persistent_keepalive': getattr(peer, 'persistent_keepalive', None),
-                    'connected': self._is_connected(last_handshake)
-                }
-                peers.append(peer_data)
+                peer_data = self._parse_dump_line(line)
+                if peer_data:
+                    peers.append(peer_data)
 
             return peers
 
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Error running wg show: {e.stderr}")
+            raise
         except Exception as e:
             logger.error(f"Error getting active peers: {e}")
             raise
 
-    @staticmethod
-    def _iter_peers(peers):
-        """Handle API changes where peers can be list or dict."""
-        if peers is None:
-            return []
-        if isinstance(peers, dict):
-            return peers.values()
-        return peers
+    def _parse_dump_line(self, line: str) -> Optional[Dict]:
+        """
+        Parse a peer line from 'wg show dump' output
+
+        Format: public-key preshared-key endpoint allowed-ips latest-handshake-sec rx-bytes tx-bytes persistent-keepalive
+
+        Args:
+            line: Line from wg show dump output
+
+        Returns:
+            Dictionary with peer data or None if invalid
+        """
+        try:
+            parts = line.split('\t')
+            if len(parts) < 8:
+                return None
+
+            public_key = parts[0]
+            # preshared_key = parts[1]  # (none) if not set
+            endpoint = parts[2] if parts[2] != "(none)" else None
+            allowed_ips_str = parts[3]
+            handshake_seconds = parts[4]
+            transfer_rx = int(parts[5]) if parts[5] else 0
+            transfer_tx = int(parts[6]) if parts[6] else 0
+            persistent_keepalive = parts[7] if parts[7] != "off" else None
+
+            # Parse allowed IPs
+            allowed_ips = [ip.strip() for ip in allowed_ips_str.split(',') if ip.strip()]
+
+            # Parse handshake time
+            latest_handshake = None
+            handshake_dt = None
+            try:
+                handshake_sec = int(handshake_seconds)
+                if handshake_sec > 0:
+                    handshake_dt = datetime.now() - timedelta(seconds=handshake_sec)
+                    latest_handshake = handshake_dt.isoformat()
+            except (ValueError, TypeError):
+                pass
+
+            # Determine if connected (handshake within last 3 minutes)
+            connected = self._is_connected(handshake_dt)
+
+            return {
+                'public_key': public_key,
+                'endpoint': endpoint,
+                'allowed_ips': allowed_ips,
+                'latest_handshake': latest_handshake,
+                'transfer_rx': transfer_rx,
+                'transfer_tx': transfer_tx,
+                'persistent_keepalive': persistent_keepalive,
+                'connected': connected
+            }
+
+        except Exception as e:
+            logger.error(f"Error parsing dump line: {e}")
+            return None
 
     def _is_connected(self, handshake_time: Optional[datetime]) -> bool:
         """
@@ -117,7 +138,7 @@ class WireGuardManager:
         Args:
             public_key: Peer's public key
             allowed_ips: List of allowed IP addresses/ranges
-            endpoint: Optional endpoint address
+            endpoint: Optional endpoint address (host:port)
             preshared_key: Optional preshared key
 
         Returns:
@@ -128,33 +149,34 @@ class WireGuardManager:
             if not self._validate_public_key(public_key):
                 raise ValueError(f"Invalid public key format: {public_key}")
 
-            device = WireguardDevice.get(self.interface)
-            config = device.get_config()
+            # Build command: sudo wg set wg0 peer <key> allowed-ips <ips> [endpoint <endpoint>] [preshared-key <psk>]
+            cmd = self.sudo_prefix + ["wg", "set", self.interface, "peer", public_key]
 
-            # Check if peer already exists
-            existing_peer = next((p for p in config.peers if p.public_key == public_key), None)
-            if existing_peer:
-                raise ValueError(f"Peer with public key {public_key} already exists")
+            # Add allowed IPs
+            cmd.extend(["allowed-ips", ",".join(allowed_ips)])
 
-            # Create new peer configuration
-            new_peer = WireguardPeer(
-                public_key=public_key,
-                allowed_ips=allowed_ips,
-                preshared_key=preshared_key if preshared_key else None
-            )
-
-            # Parse endpoint if provided
+            # Add endpoint if provided
             if endpoint:
-                host, port = self._parse_endpoint(endpoint)
-                new_peer.endpoint_host = host
-                new_peer.endpoint_port = port
+                cmd.extend(["endpoint", endpoint])
 
-            config.peers.append(new_peer)
-            device.set_config(config)
+            # Add preshared key if provided
+            if preshared_key:
+                cmd.extend(["preshared-key", preshared_key])
+
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                check=True,
+                timeout=10
+            )
 
             logger.info(f"Added peer: {public_key[:12]}...")
             return True
 
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Error adding peer: {e.stderr}")
+            raise
         except Exception as e:
             logger.error(f"Error adding peer: {e}")
             raise
@@ -170,21 +192,22 @@ class WireGuardManager:
             True if successful
         """
         try:
-            device = WireguardDevice.get(self.interface)
-            config = device.get_config()
+            cmd = self.sudo_prefix + ["wg", "set", self.interface, "peer", public_key, "remove"]
 
-            # Find and remove the peer
-            initial_count = len(config.peers)
-            config.peers = [p for p in config.peers if p.public_key != public_key]
-
-            if len(config.peers) == initial_count:
-                raise ValueError(f"Peer with public key {public_key} not found")
-
-            device.set_config(config)
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                check=True,
+                timeout=10
+            )
 
             logger.info(f"Removed peer: {public_key[:12]}...")
             return True
 
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Error removing peer: {e.stderr}")
+            raise
         except Exception as e:
             logger.error(f"Error removing peer: {e}")
             raise
@@ -203,29 +226,30 @@ class WireGuardManager:
             True if successful
         """
         try:
-            device = WireguardDevice.get(self.interface)
-            config = device.get_config()
+            cmd = self.sudo_prefix + ["wg", "set", self.interface, "peer", public_key]
 
-            # Find the peer
-            peer = next((p for p in config.peers if p.public_key == public_key), None)
-            if not peer:
-                raise ValueError(f"Peer with public key {public_key} not found")
-
-            # Update allowed IPs if provided
+            # Add allowed IPs if provided
             if allowed_ips is not None:
-                peer.allowed_ips = allowed_ips
+                cmd.extend(["allowed-ips", ",".join(allowed_ips)])
 
-            # Update endpoint if provided
+            # Add endpoint if provided
             if endpoint:
-                host, port = self._parse_endpoint(endpoint)
-                peer.endpoint_host = host
-                peer.endpoint_port = port
+                cmd.extend(["endpoint", endpoint])
 
-            device.set_config(config)
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                check=True,
+                timeout=10
+            )
 
             logger.info(f"Updated peer: {public_key[:12]}...")
             return True
 
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Error updating peer: {e.stderr}")
+            raise
         except Exception as e:
             logger.error(f"Error updating peer: {e}")
             raise
@@ -233,20 +257,41 @@ class WireGuardManager:
     @staticmethod
     def generate_keypair() -> Dict[str, str]:
         """
-        Generate new WireGuard key pair
+        Generate new WireGuard key pair using wg genkey and wg pubkey
 
         Returns:
             Dictionary with 'private_key' and 'public_key'
         """
         try:
-            private_key = WireguardKey.generate()
-            public_key = private_key.public_key()
+            # Generate private key
+            genkey_result = subprocess.run(
+                ["wg", "genkey"],
+                capture_output=True,
+                text=True,
+                check=True,
+                timeout=10
+            )
+            private_key = genkey_result.stdout.strip()
+
+            # Generate public key from private key
+            pubkey_result = subprocess.run(
+                ["wg", "pubkey"],
+                input=private_key,
+                capture_output=True,
+                text=True,
+                check=True,
+                timeout=10
+            )
+            public_key = pubkey_result.stdout.strip()
 
             return {
-                'private_key': str(private_key),
-                'public_key': str(public_key)
+                'private_key': private_key,
+                'public_key': public_key
             }
 
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Error generating keypair: {e.stderr}")
+            raise
         except Exception as e:
             logger.error(f"Error generating keypair: {e}")
             raise
@@ -254,13 +299,24 @@ class WireGuardManager:
     @staticmethod
     def generate_preshared_key() -> str:
         """
-        Generate new preshared key
+        Generate new preshared key using wg genpsk
 
         Returns:
             Preshared key string
         """
         try:
-            return str(WireguardKey.generate())
+            result = subprocess.run(
+                ["wg", "genpsk"],
+                capture_output=True,
+                text=True,
+                check=True,
+                timeout=10
+            )
+            return result.stdout.strip()
+
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Error generating preshared key: {e.stderr}")
+            raise
         except Exception as e:
             logger.error(f"Error generating preshared key: {e}")
             raise
@@ -309,17 +365,41 @@ PersistentKeepalive = 25
             Dictionary with interface information
         """
         try:
-            device = WireguardDevice.get(self.interface)
-            config = device.get_config()
+            # Get interface info using 'wg show wg0'
+            cmd = self.sudo_prefix + ["wg", "show", self.interface]
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                check=True,
+                timeout=10
+            )
+
+            output = result.stdout
+
+            # Parse interface information
+            public_key = None
+            listen_port = None
+
+            for line in output.split('\n'):
+                if 'public key:' in line:
+                    public_key = line.split('public key:')[1].strip()
+                elif 'listening port:' in line:
+                    listen_port = int(line.split('listening port:')[1].strip())
+
+            peers = self.get_active_peers()
 
             return {
                 'interface': self.interface,
-                'public_key': config.public_key if hasattr(config, 'public_key') else None,
-                'listen_port': config.listen_port if hasattr(config, 'listen_port') else None,
-                'peer_count': len(config.peers),
-                'peers': self.get_active_peers()
+                'public_key': public_key,
+                'listen_port': listen_port,
+                'peer_count': len(peers),
+                'peers': peers
             }
 
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Error getting interface info: {e.stderr}")
+            raise
         except Exception as e:
             logger.error(f"Error getting interface info: {e}")
             raise

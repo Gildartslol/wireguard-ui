@@ -71,8 +71,13 @@ npm install
 npm run build
 
 echo ""
-echo "9. Setting up NET_ADMIN capability for Python..."
-setcap cap_net_admin+ep $VENV_DIR/bin/python
+echo "9. Setting up WireGuard system user and sudo permissions..."
+bash ../deployment/setup_wireguard_user.sh
+
+echo ""
+echo "9b. Setting ownership of application files..."
+cd $INSTALL_DIR
+chown -R wireguard:wireguard .
 
 echo ""
 echo "10. Installing systemd service..."
