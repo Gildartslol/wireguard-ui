@@ -13,7 +13,7 @@ A modern web-based administration interface for managing WireGuard VPN connectio
 
 ## Architecture
 
-- **Backend**: Flask 3.x with wireguard-tools library (native Netlink API)
+- **Backend**: Flask 3.x with subprocess-based WireGuard integration
 - **Frontend**: Vue.js 3 with Vite, Tailwind CSS, and DaisyUI
 - **Database**: SQLite (PostgreSQL compatible)
 - **Authentication**: Flask-Login with secure password hashing
@@ -26,7 +26,7 @@ A modern web-based administration interface for managing WireGuard VPN connectio
 - Python 3.9+
 - Node.js 18+
 - WireGuard installed and configured
-- Root access (for WireGuard management via Netlink)
+- Root access (for setup only)
 
 ### Install WireGuard
 
@@ -57,10 +57,11 @@ sudo apt install wireguard wireguard-tools
 The setup script will:
 - Install all dependencies
 - Create Python virtual environment
+- Create dedicated `wireguard` system user
+- Configure sudo permissions for WireGuard commands
 - Set up the database
 - Build the frontend
 - Configure systemd service
-- Set up NET_ADMIN capability for WireGuard access
 
 ## Manual Installation
 
@@ -96,17 +97,18 @@ WG_SERVER_PORT=51820
 WG_SERVER_PUBLIC_KEY=<your-server-public-key>
 ```
 
-### 3. Grant NET_ADMIN Capability
+### 3. Setup WireGuard User and Permissions
 
-The application requires NET_ADMIN capability to access WireGuard via Netlink:
+Create dedicated system user with sudo permissions for WireGuard commands:
 
 ```bash
-sudo setcap cap_net_admin+ep backend/venv/bin/python
-
-# Verify
-getcap backend/venv/bin/python
-# Should output: backend/venv/bin/python cap_net_admin+ep
+sudo bash deployment/setup_wireguard_user.sh
 ```
+
+This creates the `wireguard` user and configures `/etc/sudoers.d/wireguard-ui` to allow:
+- `sudo wg show` - Read WireGuard state
+- `sudo wg set` - Manage peers
+- `wg genkey`, `wg pubkey` - Generate keys (no sudo needed)
 
 ### 4. Initialize Database and Create Admin User
 
@@ -260,14 +262,18 @@ sudo ufw allow 5000/tcp  # or 80/443 for nginx
 
 ### Permission Denied Errors
 
-**Symptom**: "Permission denied" when accessing WireGuard
+**Symptom**: "Permission denied" or "sudo: a password is required" when accessing WireGuard
 
 **Solution**:
 ```bash
-# Ensure capability is set
-sudo setcap cap_net_admin+ep /opt/wireguard-ui/backend/venv/bin/python
+# Ensure wireguard user exists and has sudo permissions
+sudo bash deployment/setup_wireguard_user.sh
 
-# Or run service as root (already configured in systemd)
+# Verify sudo access
+sudo -u wireguard sudo -n wg show
+
+# Check sudoers configuration
+sudo cat /etc/sudoers.d/wireguard-ui
 ```
 
 ### Dashboard Not Showing Peers
@@ -276,19 +282,24 @@ sudo setcap cap_net_admin+ep /opt/wireguard-ui/backend/venv/bin/python
 1. Verify WireGuard is running: `sudo wg show`
 2. Check WG_INTERFACE in `.env` matches your interface name
 3. View application logs: `sudo journalctl -u wg-dashboard -f`
-4. Test Netlink access:
+4. Test WireGuard command access:
    ```bash
+   # As wireguard user
+   sudo -u wireguard sudo -n wg show wg0 dump
+
+   # Or test the manager directly
    cd /opt/wireguard-ui/backend
    source venv/bin/activate
-   python -c "from wireguard_tools import WireguardDevice; print(WireguardDevice.get('wg0'))"
+   python -c "from wg_manager import WireGuardManager; wg = WireGuardManager('wg0'); print(wg.get_active_peers())"
    ```
 
 ### Can't Add/Remove Peers
 
 **Checks**:
-1. Ensure Flask process has NET_ADMIN capability
-2. Check WireGuard kernel module is loaded: `lsmod | grep wireguard`
-3. Verify no SELinux/AppArmor restrictions
+1. Ensure wireguard user has sudo permissions: `sudo -u wireguard sudo -n wg show`
+2. Check sudoers file: `sudo cat /etc/sudoers.d/wireguard-ui`
+3. Check WireGuard kernel module is loaded: `lsmod | grep wireguard`
+4. Verify no SELinux/AppArmor restrictions
 
 ### Frontend Can't Connect to Backend
 
@@ -373,7 +384,7 @@ wireguard-ui/
 │   ├── config.py           # Configuration management
 │   ├── models.py           # Database models
 │   ├── auth.py             # Authentication logic
-│   ├── wg_manager.py       # WireGuard manager (Netlink API)
+│   ├── wg_manager.py       # WireGuard manager (subprocess-based)
 │   ├── routes/
 │   │   ├── auth.py         # Auth endpoints
 │   │   ├── dashboard.py    # Dashboard API
@@ -408,10 +419,11 @@ wireguard-ui/
 
 1. **Authentication**: Always use strong passwords for admin accounts
 2. **HTTPS**: Use nginx with SSL/TLS in production environments
-3. **Firewall**: Restrict access to the web interface to trusted networks
-4. **Updates**: Keep dependencies up to date for security patches
-5. **Backups**: Regularly backup the SQLite database
-6. **NET_ADMIN**: The application requires NET_ADMIN capability - ensure only trusted users can access the server
+3. **Limited Privileges**: Application runs as non-root `wireguard` user with minimal sudo permissions
+4. **Sudoers**: Only necessary WireGuard commands allowed - review `/etc/sudoers.d/wireguard-ui`
+5. **Firewall**: Restrict access to the web interface to trusted networks
+6. **Updates**: Keep dependencies up to date for security patches
+7. **Backups**: Regularly backup the SQLite database
 
 ## Contributing
 
@@ -443,4 +455,6 @@ For issues, questions, or feature requests:
 - Connection history tracking
 - Configuration file generation
 - Modern responsive UI
-- Native Netlink integration via wireguard-tools
+- Subprocess-based WireGuard integration
+- Mock mode for development without WireGuard
+- Dedicated system user with minimal sudo privileges
