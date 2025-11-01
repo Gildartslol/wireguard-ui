@@ -72,7 +72,7 @@ npm run build
 
 echo ""
 echo "9. Setting up WireGuard system user and sudo permissions..."
-bash ../deployment/setup_wireguard_user.sh
+bash $INSTALL_DIR/deployment/setup_wireguard_user.sh
 
 echo ""
 echo "9b. Setting ownership of application files..."
@@ -81,7 +81,7 @@ chown -R wireguard:wireguard .
 
 echo ""
 echo "10. Installing systemd service..."
-cp ../deployment/wg-dashboard.service /etc/systemd/system/
+cp $INSTALL_DIR/deployment/wg-dashboard.service /etc/systemd/system/
 sed -i "s|/opt/wireguard-ui|$INSTALL_DIR|g" /etc/systemd/system/wg-dashboard.service
 systemctl daemon-reload
 systemctl enable wg-dashboard
@@ -90,7 +90,7 @@ systemctl start wg-dashboard
 echo ""
 echo "11. Configuring nginx (optional)..."
 if [ -f /etc/nginx/sites-available/default ]; then
-    cp ../deployment/nginx.conf /etc/nginx/sites-available/wg-dashboard
+    cp $INSTALL_DIR/deployment/nginx.conf /etc/nginx/sites-available/wg-dashboard
     echo "Nginx configuration created at /etc/nginx/sites-available/wg-dashboard"
     echo "To enable: ln -s /etc/nginx/sites-available/wg-dashboard /etc/nginx/sites-enabled/"
     echo "Then: systemctl reload nginx"
