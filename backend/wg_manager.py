@@ -1,7 +1,9 @@
 import subprocess
 import re
+import os
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional
+from pathlib import Path
 import logging
 
 logger = logging.getLogger(__name__)
@@ -14,6 +16,81 @@ class WireGuardManager:
         self.interface = interface
         self.sudo_prefix = ["sudo", "-n"]  # -n means non-interactive (will fail if password required)
 
+        # Check for mock mode
+        self.mock_mode = os.getenv('WG_MOCK_MODE', 'false').lower() == 'true'
+        self.mock_scenario = os.getenv('WG_MOCK_SCENARIO', 'mixed')
+
+        if self.mock_mode:
+            logger.info(f"WireGuard Manager initialized in MOCK MODE (scenario: {self.mock_scenario})")
+            self.mock_data_dir = Path(__file__).parent / "tests" / "mock_data"
+        else:
+            logger.info("WireGuard Manager initialized in LIVE MODE")
+
+    def _execute_command(self, cmd: List[str]) -> subprocess.CompletedProcess:
+        """
+        Execute a command - either real subprocess or return mock data
+
+        Args:
+            cmd: Command list (e.g., ['sudo', 'wg', 'show', 'wg0', 'dump'])
+
+        Returns:
+            CompletedProcess object with stdout, stderr, returncode
+        """
+        if self.mock_mode:
+            return self._get_mock_output(cmd)
+        else:
+            return subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                check=True,
+                timeout=10
+            )
+
+    def _get_mock_output(self, cmd: List[str]) -> subprocess.CompletedProcess:
+        """
+        Return mock data based on command
+
+        Args:
+            cmd: Command list to mock
+
+        Returns:
+            Mock CompletedProcess object
+        """
+        try:
+            # Create a mock result object
+            class MockResult:
+                def __init__(self, stdout, stderr="", returncode=0):
+                    self.stdout = stdout
+                    self.stderr = stderr
+                    self.returncode = returncode
+
+            # Determine which mock file to use based on command
+            if "dump" in cmd:
+                # wg show wg0 dump
+                mock_file = self.mock_data_dir / f"wg_dump_{self.mock_scenario}.txt"
+            elif "show" in cmd:
+                # wg show wg0
+                mock_file = self.mock_data_dir / "wg_show_interface.txt"
+            else:
+                # For other commands (set, genkey, etc.), return empty success
+                logger.warning(f"Mock mode: Simulating success for command: {' '.join(cmd)}")
+                return MockResult("", "", 0)
+
+            # Read mock data file
+            if mock_file.exists():
+                with open(mock_file, 'r') as f:
+                    stdout = f.read()
+                logger.debug(f"Mock mode: Loaded {mock_file}")
+                return MockResult(stdout, "", 0)
+            else:
+                logger.error(f"Mock file not found: {mock_file}")
+                raise FileNotFoundError(f"Mock data file not found: {mock_file}")
+
+        except Exception as e:
+            logger.error(f"Error loading mock data: {e}")
+            raise
+
     def get_active_peers(self) -> List[Dict]:
         """
         Get list of currently connected peers with real-time data
@@ -25,13 +102,7 @@ class WireGuardManager:
         """
         try:
             cmd = self.sudo_prefix + ["wg", "show", self.interface, "dump"]
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                check=True,
-                timeout=10
-            )
+            result = self._execute_command(cmd)
 
             lines = result.stdout.strip().split('\n')
             if not lines or len(lines) < 1:
@@ -163,13 +234,7 @@ class WireGuardManager:
             if preshared_key:
                 cmd.extend(["preshared-key", preshared_key])
 
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                check=True,
-                timeout=10
-            )
+            result = self._execute_command(cmd)
 
             logger.info(f"Added peer: {public_key[:12]}...")
             return True
@@ -194,13 +259,7 @@ class WireGuardManager:
         try:
             cmd = self.sudo_prefix + ["wg", "set", self.interface, "peer", public_key, "remove"]
 
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                check=True,
-                timeout=10
-            )
+            result = self._execute_command(cmd)
 
             logger.info(f"Removed peer: {public_key[:12]}...")
             return True
@@ -236,13 +295,7 @@ class WireGuardManager:
             if endpoint:
                 cmd.extend(["endpoint", endpoint])
 
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                check=True,
-                timeout=10
-            )
+            result = self._execute_command(cmd)
 
             logger.info(f"Updated peer: {public_key[:12]}...")
             return True
@@ -263,6 +316,19 @@ class WireGuardManager:
             Dictionary with 'private_key' and 'public_key'
         """
         try:
+            # Check for mock mode
+            if os.getenv('WG_MOCK_MODE', 'false').lower() == 'true':
+                import secrets
+                import base64
+                # Generate mock keys (valid base64 format, 32 bytes = 44 chars in base64)
+                private_key = base64.b64encode(secrets.token_bytes(32)).decode('utf-8')
+                public_key = base64.b64encode(secrets.token_bytes(32)).decode('utf-8')
+                logger.info("Mock mode: Generated mock keypair")
+                return {
+                    'private_key': private_key,
+                    'public_key': public_key
+                }
+
             # Generate private key
             genkey_result = subprocess.run(
                 ["wg", "genkey"],
@@ -305,6 +371,15 @@ class WireGuardManager:
             Preshared key string
         """
         try:
+            # Check for mock mode
+            if os.getenv('WG_MOCK_MODE', 'false').lower() == 'true':
+                import secrets
+                import base64
+                # Generate mock preshared key (valid base64 format, 32 bytes = 44 chars)
+                psk = base64.b64encode(secrets.token_bytes(32)).decode('utf-8')
+                logger.info("Mock mode: Generated mock preshared key")
+                return psk
+
             result = subprocess.run(
                 ["wg", "genpsk"],
                 capture_output=True,
@@ -367,13 +442,7 @@ PersistentKeepalive = 25
         try:
             # Get interface info using 'wg show wg0'
             cmd = self.sudo_prefix + ["wg", "show", self.interface]
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                check=True,
-                timeout=10
-            )
+            result = self._execute_command(cmd)
 
             output = result.stdout
 

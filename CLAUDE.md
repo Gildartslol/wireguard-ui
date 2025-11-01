@@ -74,6 +74,32 @@ npm run dev
 # Runs on http://localhost:5173, proxies API to :5000
 ```
 
+### Mock Mode (Development without WireGuard)
+
+Run the application without WireGuard installed using mock data:
+
+```bash
+cd backend
+source venv/bin/activate
+export WG_MOCK_MODE=true
+export WG_MOCK_SCENARIO=mixed  # Options: empty, connected, mixed, disconnected
+python app.py
+```
+
+Or add to `.env` file:
+```
+WG_MOCK_MODE=true
+WG_MOCK_SCENARIO=mixed
+```
+
+**Available Scenarios**:
+- `empty` - No peers configured
+- `connected` - All peers actively connected
+- `mixed` - Some connected, some disconnected (default)
+- `disconnected` - All peers configured but disconnected
+
+Mock data files: `backend/tests/mock_data/`
+
 ### Production Build
 
 ```bash
@@ -276,6 +302,22 @@ SERVER_PORT=5000
 - Generated peer configs must include Interface (PrivateKey, Address, DNS) and Peer (PublicKey, Endpoint, AllowedIPs) sections
 - Connection history should be populated by background task/cron (not yet implemented)
 
+## Mock Mode Architecture
+
+The WireGuard manager supports a mock mode for development and testing without WireGuard:
+
+- **Activation**: Set `WG_MOCK_MODE=true` environment variable
+- **Mock Data**: Reads from `backend/tests/mock_data/wg_dump_<scenario>.txt`
+- **Command Routing**: `_execute_command()` method routes to mock or real subprocess
+- **Parsing**: Uses same parsing logic as production (tests the full flow)
+- **Key Generation**: Generates valid base64-encoded mock keys in mock mode
+
+**Use Cases**:
+- Frontend development on non-Linux machines
+- Testing UI without affecting real WireGuard config
+- CI/CD testing without system dependencies
+- Demonstrating the application
+
 ## Troubleshooting
 
 **"Permission denied" or "sudo: a password is required"**:
@@ -310,8 +352,15 @@ SERVER_PORT=5000
 - Ensure wireguard user owns application files: `sudo chown -R wireguard:wireguard /opt/wireguard-ui`
 - Check database file permissions: `ls -la backend/wg_dashboard.db`
 
+**Mock mode not working**:
+- Verify environment variable: `echo $WG_MOCK_MODE`
+- Check mock data files exist: `ls backend/tests/mock_data/`
+- Check logs for "MOCK MODE" message: Look for initialization message
+- Verify scenario file exists: `backend/tests/mock_data/wg_dump_<scenario>.txt`
+
 ## Recent Changes
 
+- **Mock mode**: Development mode using mock WireGuard data for testing without WireGuard installed
 - **Subprocess integration**: Uses `wg show` command parsing instead of Python library for better reliability
 - **Dedicated system user**: Application runs as `wireguard` user with limited sudo privileges
 - **Sudoers configuration**: Automated setup script creates `/etc/sudoers.d/wireguard-ui` with minimal permissions

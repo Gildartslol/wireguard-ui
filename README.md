@@ -321,6 +321,36 @@ npm run dev
 # Frontend will proxy API calls to localhost:5000
 ```
 
+### Mock Mode (Development without WireGuard)
+
+For development on machines without WireGuard installed:
+
+```bash
+cd backend
+source venv/bin/activate
+
+# Enable mock mode
+export WG_MOCK_MODE=true
+export WG_MOCK_SCENARIO=mixed  # Options: empty, connected, mixed, disconnected
+
+# Run backend
+python app.py
+```
+
+Or add to `backend/.env`:
+```
+WG_MOCK_MODE=true
+WG_MOCK_SCENARIO=mixed
+```
+
+**Available Scenarios**:
+- `empty` - No peers configured
+- `connected` - All peers actively connected
+- `mixed` - Some connected, some disconnected (default)
+- `disconnected` - All peers configured but disconnected
+
+Mock data files are in `backend/tests/mock_data/`. This allows full frontend development and UI testing without WireGuard.
+
 ### Running Tests
 
 ```bash
