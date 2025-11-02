@@ -4,7 +4,7 @@ This directory contains mock data files for testing the WireGuard UI without a r
 
 ## Usage
 
-### For Direct Python Execution (Development)
+**For Direct Python Execution (Development)**
 
 Set the environment variable to enable mock mode:
 
@@ -14,7 +14,7 @@ export WG_MOCK_SCENARIO=mixed  # Optional: specify scenario (default: mixed)
 python backend/app.py
 ```
 
-### For Systemd Service (Production/Testing)
+**For Systemd Service (Production/Testing)**
 
 **You must use the .env file method for systemd services.**
 
@@ -31,6 +31,32 @@ sudo journalctl -u wg-dashboard -f  # Verify "MOCK MODE" appears in logs
 ```
 
 **Why?** Environment variables exported in your shell do not persist to systemd services. The `.env` file is read by the Flask application itself via `python-dotenv`.
+
+## Mock Mode Behavior
+
+When mock mode is enabled:
+- **All WireGuard commands** return mock data from scenario files (no real `wg` commands executed)
+- **Dashboard page** displays mock peer connections
+- **Peers management page** displays mock peers (reads from same mock data)
+- **Database is NOT used** for peer data in mock mode
+
+This allows full testing of the UI without WireGuard installed or running.
+
+## Optional: Seed Database for Testing
+
+If you want to test database functionality while in mock mode, you can optionally seed the database:
+
+```bash
+cd backend
+source venv/bin/activate  # If using venv
+WG_MOCK_MODE=true WG_MOCK_SCENARIO=mixed python3 seed_mock_data.py
+```
+
+This creates:
+- An admin user (username: `admin`, password: `admin`)
+- Database entries for all mock peers
+
+**Note:** This is optional - the UI works fully in mock mode without database seeding.
 
 ## Available Scenarios
 

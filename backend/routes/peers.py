@@ -14,17 +14,52 @@ peers_bp = Blueprint('peers', __name__, url_prefix='/api/peers')
 @login_required
 def list_peers():
     """
-    List all configured peers from database
+    List all configured peers
+
+    In mock mode: Returns peers from mock WireGuard data
+    In live mode: Returns peers from database
 
     Returns:
         200: List of peers
         500: Error listing peers
     """
     try:
-        peers = Peer.query.order_by(Peer.created_at.desc()).all()
-        peers_data = [peer.to_dict() for peer in peers]
+        import os
+        mock_mode = os.getenv('WG_MOCK_MODE', 'false').lower() == 'true'
 
-        return jsonify(peers_data), 200
+        if mock_mode:
+            # Mock mode: read from WireGuard manager (returns mock data)
+            wg_interface = current_app.config.get('WG_INTERFACE', 'wg0')
+            wg_manager = WireGuardManager(wg_interface)
+
+            # Get active peers from mock data
+            active_peers = wg_manager.get_active_peers()
+
+            # Enrich with database metadata if available
+            enriched_peers = []
+            for peer in active_peers:
+                peer_db = Peer.query.filter_by(public_key=peer['public_key']).first()
+
+                peer_data = {
+                    'id': peer_db.id if peer_db else None,
+                    'public_key': peer['public_key'],
+                    'name': peer_db.name if peer_db else f"Mock Peer {peer['public_key'][:8]}",
+                    'allowed_ips': peer['allowed_ips'],
+                    'endpoint': peer.get('endpoint'),
+                    'description': peer_db.description if peer_db else 'Mock peer from test data',
+                    'created_at': peer_db.created_at.isoformat() if peer_db and peer_db.created_at else None,
+                    'created_by': peer_db.created_by if peer_db else None
+                }
+
+                enriched_peers.append(peer_data)
+
+            return jsonify(enriched_peers), 200
+        else:
+            # Live mode: read from database
+            peers = Peer.query.order_by(Peer.created_at.desc()).all()
+            peers_data = [peer.to_dict() for peer in peers]
+
+            return jsonify(peers_data), 200
 
     except Exception as e:
         logger.error(f"Error listing peers: {e}")
