@@ -18,15 +18,60 @@
       </div>
     </div>
 
-    <div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-      <PeerCard
-        v-for="peer in peers"
-        :key="peer.id"
-        :peer="peer"
-        @delete="deletePeer"
-        @config="downloadConfig"
-        @update="updatePeer"
-      />
+    <div v-else class="space-y-4">
+      <!-- Client groups -->
+      <div v-for="(group, clientId) in groupedPeers.clients" :key="clientId" class="collapse collapse-arrow bg-base-100 shadow-xl">
+        <input type="checkbox" checked />
+        <div class="collapse-title text-xl font-medium">
+          <div class="flex items-center justify-between">
+            <div>
+              <span class="font-bold">{{ group.client.name }}</span>
+              <span v-if="group.client.subnet_range" class="ml-2 text-sm text-gray-500">
+                {{ group.client.subnet_range }}
+              </span>
+              <span class="ml-2 badge badge-primary">{{ group.peers.length }} peer{{ group.peers.length !== 1 ? 's' : '' }}</span>
+            </div>
+            <div v-if="!group.client.is_active" class="badge badge-warning">Inactive</div>
+          </div>
+        </div>
+        <div class="collapse-content">
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pt-4">
+            <PeerCard
+              v-for="peer in group.peers"
+              :key="peer.id"
+              :peer="peer"
+              @delete="deletePeer"
+              @config="downloadConfig"
+              @update="updatePeer"
+            />
+          </div>
+        </div>
+      </div>
+
+      <!-- Unassigned peers -->
+      <div v-if="groupedPeers.unassigned.length > 0" class="collapse collapse-arrow bg-base-100 shadow-xl">
+        <input type="checkbox" checked />
+        <div class="collapse-title text-xl font-medium">
+          <div class="flex items-center justify-between">
+            <div>
+              <span class="font-bold">Unassigned Peers</span>
+              <span class="ml-2 badge badge-neutral">{{ groupedPeers.unassigned.length }} peer{{ groupedPeers.unassigned.length !== 1 ? 's' : '' }}</span>
+            </div>
+          </div>
+        </div>
+        <div class="collapse-content">
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pt-4">
+            <PeerCard
+              v-for="peer in groupedPeers.unassigned"
+              :key="peer.id"
+              :peer="peer"
+              @delete="deletePeer"
+              @config="downloadConfig"
+              @update="updatePeer"
+            />
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- Add peer modal -->
@@ -57,6 +102,26 @@
             <label class="label"><span class="label-text-alt">Comma-separated list of IP addresses/ranges</span></label>
           </div>
 
+          <div class="form-control mb-4">
+            <label class="label"><span class="label-text">Client (Optional)</span></label>
+            <select v-model="newPeer.client_id" class="select select-bordered">
+              <option :value="null">Unassigned</option>
+              <option v-for="client in clients" :key="client.id" :value="client.id">
+                {{ client.name }} - {{ client.subnet_range }}
+              </option>
+            </select>
+            <label class="label">
+              <span class="label-text-alt">Assign this peer to a client site</span>
+            </label>
+          </div>
+
+          <div class="form-control mb-4">
+            <label class="label cursor-pointer">
+              <span class="label-text">This is a router/gateway device</span>
+              <input type="checkbox" v-model="newPeer.is_router" class="checkbox checkbox-primary" />
+            </label>
+          </div>
+
           <div class="form-control mb-6">
             <label class="label"><span class="label-text">Description (optional)</span></label>
             <textarea v-model="newPeer.description" class="textarea textarea-bordered"></textarea>
@@ -78,11 +143,12 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import api from '../services/api'
 import PeerCard from '../components/PeerCard.vue'
 
 const peers = ref([])
+const clients = ref([])
 const loading = ref(false)
 const showAddModal = ref(false)
 const submitting = ref(false)
@@ -91,7 +157,33 @@ const newPeer = ref({
   name: '',
   public_key: '',
   allowed_ips: '',
-  description: ''
+  description: '',
+  client_id: null,
+  is_router: false
+})
+
+// Group peers by client
+const groupedPeers = computed(() => {
+  const groups = {
+    unassigned: [],
+    clients: {}
+  }
+
+  peers.value.forEach(peer => {
+    if (!peer.client_id || !peer.client) {
+      groups.unassigned.push(peer)
+    } else {
+      if (!groups.clients[peer.client_id]) {
+        groups.clients[peer.client_id] = {
+          client: peer.client,
+          peers: []
+        }
+      }
+      groups.clients[peer.client_id].peers.push(peer)
+    }
+  })
+
+  return groups
 })
 
 const fetchPeers = async () => {
@@ -104,6 +196,15 @@ const fetchPeers = async () => {
     alert('Failed to fetch peers')
   } finally {
     loading.value = false
+  }
+}
+
+const fetchClients = async () => {
+  try {
+    const response = await api.listClients()
+    clients.value = response.data
+  } catch (error) {
+    console.error('Error fetching clients:', error)
   }
 }
 
@@ -177,9 +278,19 @@ const downloadConfig = async (peer) => {
 
 const closeAddModal = () => {
   showAddModal.value = false
-  newPeer.value = { name: '', public_key: '', allowed_ips: '', description: '' }
+  newPeer.value = {
+    name: '',
+    public_key: '',
+    allowed_ips: '',
+    description: '',
+    client_id: null,
+    is_router: false
+  }
   generatedKeys.value = {}
 }
 
-onMounted(fetchPeers)
+onMounted(() => {
+  fetchPeers()
+  fetchClients()
+})
 </script>

@@ -97,5 +97,26 @@ export default {
       params: { private_key: privateKey },
       responseType: 'blob'
     })
+  },
+
+  // Client endpoints
+  listClients() {
+    return api.get('/clients')
+  },
+
+  createClient(clientData) {
+    return api.post('/clients', clientData)
+  },
+
+  getClient(clientId) {
+    return api.get(`/clients/${clientId}`)
+  },
+
+  updateClient(clientId, clientData) {
+    return api.put(`/clients/${clientId}`, clientData)
+  },
+
+  deleteClient(clientId) {
+    return api.delete(`/clients/${clientId}`)
   }
 }

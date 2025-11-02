@@ -33,6 +33,14 @@
         </div>
       </div>
 
+      <!-- Badges -->
+      <div class="flex gap-2 mt-2">
+        <span v-if="peer.is_router" class="badge badge-accent">Router</span>
+        <span v-if="peer.client" class="badge badge-info" :title="`Client: ${peer.client.name}`">
+          {{ peer.client.name }}
+        </span>
+      </div>
+
       <div class="space-y-2">
         <div class="text-sm">
           <span class="font-semibold">Public Key:</span>
