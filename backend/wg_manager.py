@@ -14,7 +14,7 @@ class WireGuardManager:
 
     def __init__(self, interface="wg0"):
         self.interface = interface
-        self.sudo_prefix = ["sudo", "-n"]  # -n means non-interactive (will fail if password required)
+        self.sudo_prefix = ["/usr/bin/sudo", "-n"]  # -n means non-interactive (will fail if password required)
 
         # Check for mock mode
         self.mock_mode = os.getenv('WG_MOCK_MODE', 'false').lower() == 'true'
