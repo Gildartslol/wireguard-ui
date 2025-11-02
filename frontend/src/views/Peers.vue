@@ -25,6 +25,7 @@
         :peer="peer"
         @delete="deletePeer"
         @config="downloadConfig"
+        @update="updatePeer"
       />
     </div>
 
@@ -128,6 +129,16 @@ const addPeer = async () => {
     alert(error.response?.data?.error || 'Failed to add peer')
   } finally {
     submitting.value = false
+  }
+}
+
+const updatePeer = async (publicKey, updates) => {
+  try {
+    await api.updatePeer(publicKey, updates)
+    await fetchPeers()
+  } catch (error) {
+    console.error('Error updating peer:', error)
+    alert(error.response?.data?.error || 'Failed to update peer')
   }
 }
 
