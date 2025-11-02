@@ -1,5 +1,0 @@
-interface: wg0
-  public key: 8fZqFhGqYW3cF8vR7xBKLm2nP5tJkV1wX0yU9zQ4sA=
-  private key: (hidden)
-  listening port: 51820
-

@@ -74,23 +74,24 @@ def get_active_peers():
             # Get peer metadata from database
             peer_db = Peer.query.filter_by(public_key=peer['public_key']).first()
 
-            # Generate consistent UUID for peers not in database (mock mode)
-            import uuid
-            mock_uuid = str(uuid.uuid5(uuid.NAMESPACE_DNS, peer['public_key']))
+            if not peer_db:
+                # Skip peers not in database (shouldn't happen with database-based mocks)
+                logger.warning(f"Peer not found in database: {peer['public_key'][:12]}...")
+                continue
 
             peer_data = {
                 **peer,
-                'id': peer_db.id if peer_db else mock_uuid,
-                'name': peer_db.name if peer_db else 'Unknown',
-                'description': peer_db.description if peer_db else None,
-                'created_at': peer_db.created_at.isoformat() if peer_db and peer_db.created_at else None,
-                'client_id': peer_db.client_id if peer_db else None,
+                'id': peer_db.id,
+                'name': peer_db.name,
+                'description': peer_db.description,
+                'created_at': peer_db.created_at.isoformat() if peer_db.created_at else None,
+                'client_id': peer_db.client_id,
                 'client': {
                     'id': peer_db.client.id,
                     'name': peer_db.client.name,
                     'is_active': peer_db.client.is_active
-                } if peer_db and peer_db.client else None,
-                'is_router': peer_db.is_router if peer_db else False
+                } if peer_db.client else None,
+                'is_router': peer_db.is_router
             }
 
             enriched_peers.append(peer_data)

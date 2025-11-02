@@ -30,6 +30,7 @@ cd backend
 source venv/bin/activate
 
 # For mock mode (no WireGuard required):
+# Mock mode uses a separate database (wg_dashboard_mock.db) pre-populated with test data
 export WG_MOCK_MODE=true
 export WG_MOCK_SCENARIO=mixed  # Options: empty, connected, mixed, disconnected
 
@@ -38,6 +39,11 @@ python3 app.py
 ```
 
 Flask will run on `http://localhost:5000` (but you won't access this directly)
+
+**Note:** Mock mode automatically switches to `wg_dashboard_mock.db`. If the mock database doesn't exist, create it with:
+```bash
+WG_MOCK_MODE=true WG_MOCK_SCENARIO=mixed python3 create_mock_db.py
+```
 
 **Terminal 2 - Frontend (Vite)**
 ```bash
@@ -140,6 +146,55 @@ sudo journalctl -u wg-dashboard -f  # Verify "MOCK MODE" appears in logs
 
 ---
 
+## Mock Mode Details
+
+Mock mode allows you to develop and test the WireGuard UI without requiring an actual WireGuard installation or sudo permissions.
+
+### How Mock Mode Works
+
+- **Separate Database:** Mock mode uses `wg_dashboard_mock.db` instead of `wg_dashboard.db`
+- **Pre-populated Data:** The mock database contains test clients, peers, and connection data
+- **Simulated WireGuard:** The WireGuard manager reads from the database and simulates WireGuard command output
+- **No File Dependencies:** Mock data comes from the database, not text files
+
+### Mock Scenarios
+
+Four scenarios are available via `WG_MOCK_SCENARIO`:
+
+| Scenario | Description | Peers | Connection State |
+|----------|-------------|-------|------------------|
+| `empty` | No peers configured | 0 | N/A |
+| `connected` | All peers actively connected | 4 | All connected (recent handshakes) |
+| `disconnected` | Peers configured but offline | 4 | All disconnected (no handshakes) |
+| `mixed` | Mix of states (default) | 5 | 2 connected, 3 disconnected |
+
+### Creating/Recreating Mock Database
+
+```bash
+cd backend
+
+# Create mock database for a specific scenario
+WG_MOCK_MODE=true WG_MOCK_SCENARIO=mixed python3 create_mock_db.py
+
+# Try different scenarios
+WG_MOCK_MODE=true WG_MOCK_SCENARIO=connected python3 create_mock_db.py
+WG_MOCK_MODE=true WG_MOCK_SCENARIO=empty python3 create_mock_db.py
+```
+
+**Note:** Creating a mock database will drop all existing data in that database. The script creates:
+- 1 admin user (username: admin, password: admin)
+- 3 mock clients (Acme Corp, TechStart Inc, Legacy Systems Ltd)
+- Peers with appropriate client assignments and router flags
+
+### Mock Database Location
+
+- Production database: `backend/wg_dashboard.db`
+- Mock database: `backend/wg_dashboard_mock.db`
+
+Both databases have the same schema and are version controlled (mock DB only).
+
+---
+
 ## Troubleshooting
 
 ### Development Mode
@@ -178,6 +233,13 @@ ls -la /opt/wireguard-ui/
 - Verify `.env` file exists: `cat backend/.env | grep MOCK`
 - Check logs show "MOCK MODE": `sudo journalctl -u wg-dashboard -f`
 - Remember: shell exports don't work with systemd, must use `.env`
+- Ensure mock database exists: `ls -lh backend/wg_dashboard_mock.db`
+- If missing, create it: `WG_MOCK_MODE=true WG_MOCK_SCENARIO=mixed python3 backend/create_mock_db.py`
+
+**No peers showing in mock mode:**
+- Check that mock database was created: `ls -lh backend/wg_dashboard_mock.db`
+- Verify scenario has peers: `empty` scenario has 0 peers, try `mixed` instead
+- Recreate mock database with desired scenario
 
 ---
 

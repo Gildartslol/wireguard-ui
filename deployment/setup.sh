@@ -61,6 +61,11 @@ echo "6. Initializing database..."
 python -c "from app import create_app; app = create_app(); app.app_context().push(); from models import db; db.create_all()"
 
 echo ""
+echo "6b. Creating mock database for testing..."
+WG_MOCK_MODE=true WG_MOCK_SCENARIO=mixed python3 create_mock_db.py
+echo "Mock database created with 'mixed' scenario"
+
+echo ""
 echo "7. Creating admin user..."
 python create_admin.py
 

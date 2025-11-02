@@ -13,7 +13,10 @@ class Config:
     FLASK_ENV = os.getenv('FLASK_ENV', 'development')
 
     # Database Configuration
-    SQLALCHEMY_DATABASE_URI = os.getenv('DATABASE_URI', 'sqlite:///wg_dashboard.db')
+    # Use separate database file for mock mode
+    _mock_mode = os.getenv('WG_MOCK_MODE', 'false').lower() == 'true'
+    _db_name = 'wg_dashboard_mock.db' if _mock_mode else 'wg_dashboard.db'
+    SQLALCHEMY_DATABASE_URI = os.getenv('DATABASE_URI', f'sqlite:///{_db_name}')
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     SQLALCHEMY_ECHO = FLASK_ENV == 'development'
 

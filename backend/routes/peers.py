@@ -14,64 +14,18 @@ peers_bp = Blueprint('peers', __name__, url_prefix='/api/peers')
 @login_required
 def list_peers():
     """
-    List all configured peers
-
-    In mock mode: Returns peers from mock WireGuard data
-    In live mode: Returns peers from database
+    List all configured peers from database
 
     Returns:
         200: List of peers
         500: Error listing peers
     """
     try:
-        import os
-        mock_mode = os.getenv('WG_MOCK_MODE', 'false').lower() == 'true'
+        # Read from database (works for both mock and live mode)
+        peers = Peer.query.order_by(Peer.created_at.desc()).all()
+        peers_data = [peer.to_dict() for peer in peers]
 
-        if mock_mode:
-            # Mock mode: read from WireGuard manager (returns mock data)
-            wg_interface = current_app.config.get('WG_INTERFACE', 'wg0')
-            wg_manager = WireGuardManager(wg_interface)
-
-            # Get active peers from mock data
-            active_peers = wg_manager.get_active_peers()
-
-            # Enrich with database metadata if available
-            enriched_peers = []
-            for idx, peer in enumerate(active_peers):
-                peer_db = Peer.query.filter_by(public_key=peer['public_key']).first()
-
-                # Generate consistent UUID for mock peers (based on index for consistency)
-                import uuid
-                mock_uuid = str(uuid.uuid5(uuid.NAMESPACE_DNS, peer['public_key']))
-
-                peer_data = {
-                    'id': peer_db.id if peer_db else mock_uuid,
-                    'public_key': peer['public_key'],
-                    'name': peer_db.name if peer_db else f"Mock Peer {idx + 1}",
-                    'allowed_ips': peer['allowed_ips'],
-                    'endpoint': peer.get('endpoint'),
-                    'description': peer_db.description if peer_db else 'Mock peer from test data',
-                    'created_at': peer_db.created_at.isoformat() if peer_db and peer_db.created_at else None,
-                    'created_by': peer_db.created_by if peer_db else None,
-                    'client_id': peer_db.client_id if peer_db else None,
-                    'client': {
-                        'id': peer_db.client.id,
-                        'name': peer_db.client.name,
-                        'subnet_range': peer_db.client.subnet_range,
-                        'is_active': peer_db.client.is_active
-                    } if peer_db and peer_db.client else None,
-                    'is_router': peer_db.is_router if peer_db else False
-                }
-
-                enriched_peers.append(peer_data)
-
-            return jsonify(enriched_peers), 200
-        else:
-            # Live mode: read from database
-            peers = Peer.query.order_by(Peer.created_at.desc()).all()
-            peers_data = [peer.to_dict() for peer in peers]
-
-            return jsonify(peers_data), 200
+        return jsonify(peers_data), 200
 
     except Exception as e:
         logger.error(f"Error listing peers: {e}")

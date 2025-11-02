@@ -3,7 +3,6 @@ import re
 import os
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional
-from pathlib import Path
 import logging
 
 logger = logging.getLogger(__name__)
@@ -22,7 +21,6 @@ class WireGuardManager:
 
         if self.mock_mode:
             logger.info(f"WireGuard Manager initialized in MOCK MODE (scenario: {self.mock_scenario})")
-            self.mock_data_dir = Path(__file__).parent / "tests" / "mock_data"
         else:
             logger.info("WireGuard Manager initialized in LIVE MODE")
 
@@ -49,7 +47,7 @@ class WireGuardManager:
 
     def _get_mock_output(self, cmd: List[str]) -> subprocess.CompletedProcess:
         """
-        Return mock data based on command
+        Return mock data from database based on command
 
         Args:
             cmd: Command list to mock
@@ -65,31 +63,131 @@ class WireGuardManager:
                     self.stderr = stderr
                     self.returncode = returncode
 
-            # Determine which mock file to use based on command
-            if "dump" in cmd:
-                # wg show wg0 dump
-                mock_file = self.mock_data_dir / f"wg_dump_{self.mock_scenario}.txt"
-            elif "show" in cmd:
-                # wg show wg0
-                mock_file = self.mock_data_dir / "wg_show_interface.txt"
-            else:
-                # For other commands (set, genkey, etc.), return empty success
+            # For non-read commands (set, genkey, etc.), return empty success
+            if "dump" not in cmd and "show" not in cmd:
                 logger.warning(f"Mock mode: Simulating success for command: {' '.join(cmd)}")
                 return MockResult("", "", 0)
 
-            # Read mock data file
-            if mock_file.exists():
-                with open(mock_file, 'r') as f:
-                    stdout = f.read()
-                logger.debug(f"Mock mode: Loaded {mock_file}")
-                return MockResult(stdout, "", 0)
+            # Import database models (inside method to avoid circular imports)
+            from models import Peer
+
+            # Query database for peers
+            peers = Peer.query.all()
+
+            # Determine connection states based on scenario
+            if "dump" in cmd:
+                # Generate WireGuard dump format from database
+                stdout = self._generate_mock_dump(peers)
+            elif "show" in cmd:
+                # Generate human-readable show format
+                stdout = self._generate_mock_show(peers)
             else:
-                logger.error(f"Mock file not found: {mock_file}")
-                raise FileNotFoundError(f"Mock data file not found: {mock_file}")
+                stdout = ""
+
+            logger.debug(f"Mock mode: Generated output for {len(peers)} peers (scenario: {self.mock_scenario})")
+            return MockResult(stdout, "", 0)
 
         except Exception as e:
-            logger.error(f"Error loading mock data: {e}")
+            logger.error(f"Error generating mock data from database: {e}")
             raise
+
+    def _generate_mock_dump(self, peers: List) -> str:
+        """
+        Generate WireGuard dump format from database peers
+
+        Format: Tab-separated values
+        Line 1: interface data (private-key, public-key, listen-port, fwmark)
+        Lines 2+: peer data (public-key, preshared-key, endpoint, allowed-ips, handshake-sec, rx-bytes, tx-bytes, keepalive)
+
+        Args:
+            peers: List of Peer model instances
+
+        Returns:
+            Dump format string
+        """
+        lines = []
+
+        # Line 1: Interface info (mock values)
+        interface_line = "mock_private_key\tmock_server_public_key\t51820\toff"
+        lines.append(interface_line)
+
+        # Peer lines
+        for idx, peer in enumerate(peers):
+            # Determine connection state based on scenario and peer index
+            handshake_sec = self._get_mock_handshake_seconds(idx, len(peers))
+            rx_bytes = 1024000 + (idx * 50000)  # Mock transfer data
+            tx_bytes = 512000 + (idx * 25000)
+
+            # Format: public-key preshared-key endpoint allowed-ips handshake-sec rx-bytes tx-bytes keepalive
+            peer_line = f"{peer.public_key}\t(none)\t{peer.endpoint or '(none)'}\t{peer.allowed_ips}\t{handshake_sec}\t{rx_bytes}\t{tx_bytes}\toff"
+            lines.append(peer_line)
+
+        return "\n".join(lines)
+
+    def _generate_mock_show(self, peers: List) -> str:
+        """
+        Generate human-readable WireGuard show format
+
+        Args:
+            peers: List of Peer model instances
+
+        Returns:
+            Show format string
+        """
+        lines = [
+            f"interface: {self.interface}",
+            "  public key: mock_server_public_key",
+            "  private key: (hidden)",
+            "  listening port: 51820",
+            ""
+        ]
+
+        for peer in peers:
+            lines.append(f"peer: {peer.public_key}")
+            if peer.endpoint:
+                lines.append(f"  endpoint: {peer.endpoint}")
+            lines.append(f"  allowed ips: {peer.allowed_ips}")
+            lines.append("")
+
+        return "\n".join(lines)
+
+    def _get_mock_handshake_seconds(self, peer_index: int, total_peers: int) -> int:
+        """
+        Get mock handshake seconds based on scenario and peer position
+
+        Args:
+            peer_index: Index of peer in list
+            total_peers: Total number of peers
+
+        Returns:
+            Seconds since last handshake (0 = never)
+        """
+        scenario = self.mock_scenario
+
+        if scenario == 'empty':
+            # No peers, shouldn't reach here
+            return 0
+        elif scenario == 'connected':
+            # All peers connected (recent handshakes: 30-90 seconds ago)
+            return 30 + (peer_index * 15)
+        elif scenario == 'disconnected':
+            # All peers disconnected (no handshakes)
+            return 0
+        elif scenario == 'mixed':
+            # Mixed states
+            if peer_index == 0:
+                return 45  # Connected
+            elif peer_index == 1:
+                return 0   # Disconnected
+            elif peer_index == 2:
+                return 60  # Connected
+            elif peer_index == 3:
+                return 120 # Recently connected (2 min ago)
+            else:
+                return 0   # Default disconnected
+        else:
+            # Unknown scenario, default to disconnected
+            return 0
 
     def get_active_peers(self) -> List[Dict]:
         """

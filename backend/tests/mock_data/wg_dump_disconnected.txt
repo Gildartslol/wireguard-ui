@@ -1,4 +1,0 @@
-(none)	8fZqFhGqYW3cF8vR7xBKLm2nP5tJkV1wX0yU9zQ4sA=	51820	off
-aB3cD4eF5gH6iJ7kL8mN9oP0qR1sT2uV3wX4yZ5aB6=	(none)	(none)	10.0.0.2/32	0	0	0	off
-cD4eF5gH6iJ7kL8mN9oP0qR1sT2uV3wX4yZ5aB6cD7=	(none)	(none)	10.0.0.3/32	0	0	0	off
-eF5gH6iJ7kL8mN9oP0qR1sT2uV3wX4yZ5aB6cD7eF8=	(none)	(none)	10.0.0.4/32	0	0	0	off
