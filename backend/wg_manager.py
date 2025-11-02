@@ -122,8 +122,13 @@ class WireGuardManager:
             return peers
 
         except subprocess.CalledProcessError as e:
-            logger.error(f"Error running wg show: {e.stderr}")
-            raise
+            # Check if it's because the interface doesn't exist
+            if "does not exist" in str(e.stderr) or "No such device" in str(e.stderr):
+                logger.warning(f"WireGuard interface '{self.interface}' not found or not running. Returning empty peer list.")
+                return []
+            else:
+                logger.error(f"Error running wg show: {e.stderr}")
+                raise
         except Exception as e:
             logger.error(f"Error getting active peers: {e}")
             raise
@@ -467,8 +472,19 @@ PersistentKeepalive = 25
             }
 
         except subprocess.CalledProcessError as e:
-            logger.error(f"Error getting interface info: {e.stderr}")
-            raise
+            # Check if it's because the interface doesn't exist
+            if "does not exist" in str(e.stderr) or "No such device" in str(e.stderr):
+                logger.warning(f"WireGuard interface '{self.interface}' not found or not running. Returning empty interface info.")
+                return {
+                    'interface': self.interface,
+                    'public_key': None,
+                    'listen_port': None,
+                    'peer_count': 0,
+                    'peers': []
+                }
+            else:
+                logger.error(f"Error getting interface info: {e.stderr}")
+                raise
         except Exception as e:
             logger.error(f"Error getting interface info: {e}")
             raise
