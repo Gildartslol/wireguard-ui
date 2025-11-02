@@ -6,6 +6,7 @@ from auth import init_auth
 from routes.auth import auth_bp
 from routes.dashboard import dashboard_bp
 from routes.peers import peers_bp
+from routes.clients import clients_bp
 import logging
 import os
 
@@ -51,6 +52,7 @@ def create_app(config_name='default'):
     app.register_blueprint(auth_bp)
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(peers_bp)
+    app.register_blueprint(clients_bp)
 
     # Create database tables
     with app.app_context():

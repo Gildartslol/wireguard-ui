@@ -83,7 +83,14 @@ def get_active_peers():
                 'id': peer_db.id if peer_db else mock_uuid,
                 'name': peer_db.name if peer_db else 'Unknown',
                 'description': peer_db.description if peer_db else None,
-                'created_at': peer_db.created_at.isoformat() if peer_db and peer_db.created_at else None
+                'created_at': peer_db.created_at.isoformat() if peer_db and peer_db.created_at else None,
+                'client_id': peer_db.client_id if peer_db else None,
+                'client': {
+                    'id': peer_db.client.id,
+                    'name': peer_db.client.name,
+                    'is_active': peer_db.client.is_active
+                } if peer_db and peer_db.client else None,
+                'is_router': peer_db.is_router if peer_db else False
             }
 
             enriched_peers.append(peer_data)

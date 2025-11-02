@@ -52,7 +52,15 @@ def list_peers():
                     'endpoint': peer.get('endpoint'),
                     'description': peer_db.description if peer_db else 'Mock peer from test data',
                     'created_at': peer_db.created_at.isoformat() if peer_db and peer_db.created_at else None,
-                    'created_by': peer_db.created_by if peer_db else None
+                    'created_by': peer_db.created_by if peer_db else None,
+                    'client_id': peer_db.client_id if peer_db else None,
+                    'client': {
+                        'id': peer_db.client.id,
+                        'name': peer_db.client.name,
+                        'subnet_range': peer_db.client.subnet_range,
+                        'is_active': peer_db.client.is_active
+                    } if peer_db and peer_db.client else None,
+                    'is_router': peer_db.is_router if peer_db else False
                 }
 
                 enriched_peers.append(peer_data)
@@ -110,6 +118,14 @@ def create_peer():
         if existing_peer:
             return jsonify({'error': 'Peer with this public key already exists'}), 409
 
+        # Validate client_id if provided
+        client_id = data.get('client_id')
+        if client_id:
+            from models import Client
+            client = Client.query.filter_by(id=client_id).first()
+            if not client:
+                return jsonify({'error': f'Client not found: {client_id}'}), 404
+
         # Convert allowed_ips to list if it's a string
         if isinstance(allowed_ips, str):
             allowed_ips_list = [ip.strip() for ip in allowed_ips.split(',')]
@@ -134,7 +150,9 @@ def create_peer():
             endpoint=data.get('endpoint'),
             description=data.get('description'),
             preshared_key=data.get('preshared_key'),
-            created_by=current_user.id
+            created_by=current_user.id,
+            client_id=data.get('client_id'),
+            is_router=data.get('is_router', False)
         )
 
         db.session.add(peer)
@@ -358,6 +376,16 @@ def update_peer(peer_id):
             peer.name = data['name']
         if 'description' in data:
             peer.description = data['description']
+        if 'client_id' in data:
+            client_id = data['client_id']
+            if client_id:  # Validate if not NULL
+                from models import Client
+                client = Client.query.filter_by(id=client_id).first()
+                if not client:
+                    return jsonify({'error': f'Client not found: {client_id}'}), 404
+            peer.client_id = client_id
+        if 'is_router' in data:
+            peer.is_router = data['is_router']
         if 'allowed_ips' in data:
             # Convert to list if string
             if isinstance(data['allowed_ips'], str):

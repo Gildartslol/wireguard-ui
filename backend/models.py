@@ -44,6 +44,40 @@ class User(UserMixin, db.Model):
         return f'<User {self.username}>'
 
 
+class Client(db.Model):
+    """Client/Site grouping for pentesting engagements"""
+    __tablename__ = 'clients'
+
+    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    name = db.Column(db.String(100), unique=True, nullable=False, index=True)
+    subnet_range = db.Column(db.String(20))  # e.g., "10.200.0.0/24"
+    location = db.Column(db.String(200))
+    description = db.Column(db.Text)
+    is_active = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_by = db.Column(db.Integer, db.ForeignKey('users.id'))
+
+    # Relationship to user
+    creator = db.relationship('User', backref='created_clients')
+
+    def to_dict(self):
+        """Convert client to dictionary"""
+        return {
+            'id': self.id,
+            'name': self.name,
+            'subnet_range': self.subnet_range,
+            'location': self.location,
+            'description': self.description,
+            'is_active': self.is_active,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'created_by': self.created_by,
+            'peer_count': len(self.peers) if hasattr(self, 'peers') else 0
+        }
+
+    def __repr__(self):
+        return f'<Client {self.name} ({self.subnet_range})>'
+
+
 class Peer(db.Model):
     """WireGuard peer metadata"""
     __tablename__ = 'peers'
@@ -57,9 +91,12 @@ class Peer(db.Model):
     preshared_key = db.Column(db.String(44))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     created_by = db.Column(db.Integer, db.ForeignKey('users.id'))
+    client_id = db.Column(db.String(36), db.ForeignKey('clients.id', ondelete='SET NULL'), nullable=True, index=True)
+    is_router = db.Column(db.Boolean, default=False)
 
-    # Relationship to user
+    # Relationships
     creator = db.relationship('User', backref='created_peers')
+    client = db.relationship('Client', backref='peers')
 
     def to_dict(self):
         """Convert peer to dictionary"""
@@ -71,7 +108,15 @@ class Peer(db.Model):
             'endpoint': self.endpoint,
             'description': self.description,
             'created_at': self.created_at.isoformat() if self.created_at else None,
-            'created_by': self.created_by
+            'created_by': self.created_by,
+            'client_id': self.client_id,
+            'client': {
+                'id': self.client.id,
+                'name': self.client.name,
+                'subnet_range': self.client.subnet_range,
+                'is_active': self.client.is_active
+            } if self.client else None,
+            'is_router': self.is_router
         }
 
     def __repr__(self):
