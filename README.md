@@ -336,6 +336,7 @@ npm run dev
 
 For development on machines without WireGuard installed:
 
+**Option 1: Shell Export (Direct Python only)**
 ```bash
 cd backend
 source venv/bin/activate
@@ -344,15 +345,31 @@ source venv/bin/activate
 export WG_MOCK_MODE=true
 export WG_MOCK_SCENARIO=mixed  # Options: empty, connected, mixed, disconnected
 
-# Run backend
+# Run backend directly
 python app.py
 ```
 
-Or add to `backend/.env`:
+**Option 2: .env File (Recommended, works with systemd)**
+
+Edit `backend/.env` and add:
 ```
 WG_MOCK_MODE=true
 WG_MOCK_SCENARIO=mixed
 ```
+
+Then start the application:
+```bash
+# Direct Python
+cd backend
+source venv/bin/activate
+python app.py
+
+# OR via systemd service
+sudo systemctl restart wg-dashboard
+sudo journalctl -u wg-dashboard -f  # Check logs show "MOCK MODE"
+```
+
+**IMPORTANT**: If running via systemd service, you **must** add the variables to the `.env` file. Shell exports don't persist to systemd services.
 
 **Available Scenarios**:
 - `empty` - No peers configured

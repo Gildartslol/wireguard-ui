@@ -4,6 +4,8 @@ This directory contains mock data files for testing the WireGuard UI without a r
 
 ## Usage
 
+### For Direct Python Execution (Development)
+
 Set the environment variable to enable mock mode:
 
 ```bash
@@ -12,11 +14,23 @@ export WG_MOCK_SCENARIO=mixed  # Optional: specify scenario (default: mixed)
 python backend/app.py
 ```
 
-Or in your `.env` file:
+### For Systemd Service (Production/Testing)
+
+**You must use the .env file method for systemd services.**
+
+Edit `backend/.env` and add:
 ```
 WG_MOCK_MODE=true
 WG_MOCK_SCENARIO=mixed
 ```
+
+Then restart the service:
+```bash
+sudo systemctl restart wg-dashboard
+sudo journalctl -u wg-dashboard -f  # Verify "MOCK MODE" appears in logs
+```
+
+**Why?** Environment variables exported in your shell do not persist to systemd services. The `.env` file is read by the Flask application itself via `python-dotenv`.
 
 ## Available Scenarios
 

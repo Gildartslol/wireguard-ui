@@ -78,6 +78,7 @@ npm run dev
 
 Run the application without WireGuard installed using mock data:
 
+**Option 1: Direct Python (Development)**
 ```bash
 cd backend
 source venv/bin/activate
@@ -86,11 +87,24 @@ export WG_MOCK_SCENARIO=mixed  # Options: empty, connected, mixed, disconnected
 python app.py
 ```
 
-Or add to `.env` file:
+**Option 2: Via .env file (Recommended for Systemd)**
+
+Edit `backend/.env` and add:
 ```
 WG_MOCK_MODE=true
 WG_MOCK_SCENARIO=mixed
 ```
+
+Then run normally:
+```bash
+# Direct Python
+python app.py
+
+# Or via systemd service
+sudo systemctl restart wg-dashboard
+```
+
+**IMPORTANT**: If using systemd service, you **must** use the `.env` file method. Environment variables exported in your shell do not persist to systemd services.
 
 **Available Scenarios**:
 - `empty` - No peers configured
@@ -353,10 +367,12 @@ The WireGuard manager supports a mock mode for development and testing without W
 - Check database file permissions: `ls -la backend/wg_dashboard.db`
 
 **Mock mode not working**:
-- Verify environment variable: `echo $WG_MOCK_MODE`
+- **If using systemd**: Verify variables are in `.env` file, not just exported in shell
+- Check `.env` file: `cat backend/.env | grep WG_MOCK`
 - Check mock data files exist: `ls backend/tests/mock_data/`
-- Check logs for "MOCK MODE" message: Look for initialization message
+- Check logs for "MOCK MODE" message: `sudo journalctl -u wg-dashboard -n 20 | grep MOCK`
 - Verify scenario file exists: `backend/tests/mock_data/wg_dump_<scenario>.txt`
+- Remember: Shell exports don't work with systemd - use `.env` file
 
 ## Recent Changes
 
