@@ -65,10 +65,10 @@ echo "7. Creating admin user..."
 python create_admin.py
 
 echo ""
-echo "8. Building frontend..."
+echo "8. Installing frontend dependencies..."
 cd ../frontend
 npm install
-npm run build
+echo "Frontend dependencies installed. Build skipped (run 'npm run build' manually when needed)"
 
 echo ""
 echo "9. Setting up WireGuard system user and sudo permissions..."
@@ -85,7 +85,8 @@ cp $INSTALL_DIR/deployment/wg-dashboard.service /etc/systemd/system/
 sed -i "s|/opt/wireguard-ui|$INSTALL_DIR|g" /etc/systemd/system/wg-dashboard.service
 systemctl daemon-reload
 systemctl enable wg-dashboard
-systemctl start wg-dashboard
+echo "Service configured and enabled, but NOT started automatically."
+echo "To start: sudo systemctl start wg-dashboard"
 
 echo ""
 echo "11. Configuring nginx (optional)..."
@@ -101,15 +102,18 @@ echo "=================================="
 echo "Installation Complete!"
 echo "=================================="
 echo ""
-echo "Service status:"
-systemctl status wg-dashboard --no-pager
-echo ""
-echo "The WireGuard UI is now running on http://localhost:5000"
+echo "Configuration finished. Service is NOT running yet."
 echo ""
 echo "Next steps:"
 echo "1. Edit $INSTALL_DIR/backend/.env with your WireGuard configuration"
-echo "2. Configure nginx if needed for external access"
-echo "3. Access the UI and log in with the admin account you created"
+echo "2. Build the frontend: cd $INSTALL_DIR/frontend && npm run build"
+echo "3. Start the service: sudo systemctl start wg-dashboard"
+echo "4. Check status: sudo systemctl status wg-dashboard"
+echo "5. Configure nginx if needed for external access"
+echo "6. Access the UI at http://localhost:5000 or your server IP"
 echo ""
-echo "Logs: journalctl -u wg-dashboard -f"
+echo "Useful commands:"
+echo "  - View logs: journalctl -u wg-dashboard -f"
+echo "  - Stop service: sudo systemctl stop wg-dashboard"
+echo "  - Restart service: sudo systemctl restart wg-dashboard"
 echo ""
