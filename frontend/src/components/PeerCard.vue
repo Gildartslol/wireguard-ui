@@ -59,7 +59,7 @@
         <button @click="$emit('config', peer)" class="btn btn-sm btn-primary">
           Download Config
         </button>
-        <button @click="$emit('delete', peer.public_key)" class="btn btn-sm btn-error">
+        <button @click="$emit('delete', peer.id)" class="btn btn-sm btn-error">
           Delete
         </button>
       </div>
@@ -118,7 +118,7 @@ const saveEdit = async () => {
 
   isSaving.value = true
   try {
-    emit('update', props.peer.public_key, { name: trimmedName })
+    emit('update', props.peer.id, { name: trimmedName })
     isEditing.value = false
   } catch (error) {
     console.error('Error updating peer name:', error)

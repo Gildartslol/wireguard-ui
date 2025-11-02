@@ -37,13 +37,17 @@ def list_peers():
 
             # Enrich with database metadata if available
             enriched_peers = []
-            for peer in active_peers:
+            for idx, peer in enumerate(active_peers):
                 peer_db = Peer.query.filter_by(public_key=peer['public_key']).first()
 
+                # Generate consistent UUID for mock peers (based on index for consistency)
+                import uuid
+                mock_uuid = str(uuid.uuid5(uuid.NAMESPACE_DNS, peer['public_key']))
+
                 peer_data = {
-                    'id': peer_db.id if peer_db else None,
+                    'id': peer_db.id if peer_db else mock_uuid,
                     'public_key': peer['public_key'],
-                    'name': peer_db.name if peer_db else f"Mock Peer {peer['public_key'][:8]}",
+                    'name': peer_db.name if peer_db else f"Mock Peer {idx + 1}",
                     'allowed_ips': peer['allowed_ips'],
                     'endpoint': peer.get('endpoint'),
                     'description': peer_db.description if peer_db else 'Mock peer from test data',
@@ -149,11 +153,14 @@ def create_peer():
         return jsonify({'error': str(e)}), 500
 
 
-@peers_bp.route('/<public_key>', methods=['GET'])
+@peers_bp.route('/<peer_id>', methods=['GET'])
 @login_required
-def get_peer(public_key):
+def get_peer(peer_id):
     """
     Get peer details
+
+    Args:
+        peer_id: Peer UUID
 
     Returns:
         200: Peer data
@@ -161,7 +168,7 @@ def get_peer(public_key):
         500: Error getting peer
     """
     try:
-        peer = Peer.query.filter_by(public_key=public_key).first()
+        peer = Peer.query.filter_by(id=peer_id).first()
 
         if not peer:
             return jsonify({'error': 'Peer not found'}), 404
@@ -173,11 +180,14 @@ def get_peer(public_key):
         return jsonify({'error': str(e)}), 500
 
 
-@peers_bp.route('/<public_key>', methods=['DELETE'])
+@peers_bp.route('/<peer_id>', methods=['DELETE'])
 @login_required
-def delete_peer(public_key):
+def delete_peer(peer_id):
     """
     Delete peer from WireGuard and database
+
+    Args:
+        peer_id: Peer UUID
 
     Returns:
         200: Peer deleted successfully
@@ -186,17 +196,17 @@ def delete_peer(public_key):
     """
     try:
         # Get peer from database
-        peer = Peer.query.filter_by(public_key=public_key).first()
+        peer = Peer.query.filter_by(id=peer_id).first()
 
         if not peer:
             return jsonify({'error': 'Peer not found'}), 404
 
-        # Remove from WireGuard
+        # Remove from WireGuard (use peer's public_key)
         wg_interface = current_app.config.get('WG_INTERFACE', 'wg0')
         wg_manager = WireGuardManager(wg_interface)
 
         try:
-            wg_manager.remove_peer(public_key)
+            wg_manager.remove_peer(peer.public_key)
         except Exception as wg_error:
             logger.warning(f"WireGuard removal failed (peer may not exist in WG): {wg_error}")
 
@@ -204,7 +214,7 @@ def delete_peer(public_key):
         db.session.delete(peer)
         db.session.commit()
 
-        logger.info(f"Deleted peer: {peer.name} ({public_key[:12]}...) by user {current_user.username}")
+        logger.info(f"Deleted peer: {peer.name} (UUID: {peer_id[:8]}..., pubkey: {peer.public_key[:12]}...) by user {current_user.username}")
 
         return jsonify({'message': 'Peer deleted successfully'}), 200
 
@@ -234,11 +244,14 @@ def generate_keys():
         return jsonify({'error': str(e)}), 500
 
 
-@peers_bp.route('/<public_key>/config', methods=['GET'])
+@peers_bp.route('/<peer_id>/config', methods=['GET'])
 @login_required
-def get_peer_config(public_key):
+def get_peer_config(peer_id):
     """
     Generate and download peer configuration file
+
+    Args:
+        peer_id: Peer UUID
 
     Query Parameters:
         private_key: Peer's private key (required)
@@ -257,7 +270,7 @@ def get_peer_config(public_key):
             return jsonify({'error': 'private_key query parameter required'}), 400
 
         # Get peer from database
-        peer = Peer.query.filter_by(public_key=public_key).first()
+        peer = Peer.query.filter_by(id=peer_id).first()
 
         if not peer:
             return jsonify({'error': 'Peer not found'}), 404
@@ -306,11 +319,14 @@ def get_peer_config(public_key):
         return jsonify({'error': str(e)}), 500
 
 
-@peers_bp.route('/<public_key>', methods=['PUT'])
+@peers_bp.route('/<peer_id>', methods=['PUT'])
 @login_required
-def update_peer(public_key):
+def update_peer(peer_id):
     """
     Update peer information
+
+    Args:
+        peer_id: Peer UUID
 
     Request JSON:
         {
@@ -332,7 +348,7 @@ def update_peer(public_key):
             return jsonify({'error': 'No data provided'}), 400
 
         # Get peer from database
-        peer = Peer.query.filter_by(public_key=public_key).first()
+        peer = Peer.query.filter_by(id=peer_id).first()
 
         if not peer:
             return jsonify({'error': 'Peer not found'}), 404
@@ -349,17 +365,17 @@ def update_peer(public_key):
             else:
                 allowed_ips_list = data['allowed_ips']
 
-            # Update WireGuard
+            # Update WireGuard (use peer's public_key)
             wg_interface = current_app.config.get('WG_INTERFACE', 'wg0')
             wg_manager = WireGuardManager(wg_interface)
-            wg_manager.update_peer(public_key, allowed_ips=allowed_ips_list)
+            wg_manager.update_peer(peer.public_key, allowed_ips=allowed_ips_list)
 
             # Update database
             peer.allowed_ips = ','.join(allowed_ips_list)
 
         db.session.commit()
 
-        logger.info(f"Updated peer: {peer.name} ({public_key[:12]}...) by user {current_user.username}")
+        logger.info(f"Updated peer: {peer.name} (UUID: {peer_id[:8]}..., pubkey: {peer.public_key[:12]}...) by user {current_user.username}")
 
         return jsonify(peer.to_dict()), 200
 

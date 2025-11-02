@@ -382,9 +382,11 @@ Key implementation details:
 **peers.py routes:**
 - GET `/api/peers` - List all peers
 - POST `/api/peers` - Add new peer
-- DELETE `/api/peers/<public_key>` - Remove peer
-- GET `/api/peers/<public_key>/config` - Generate config file
-- POST `/api/peers/generate` - Generate new keypair
+- GET `/api/peers/<peer_id>` - Get peer details (peer_id is UUID)
+- PUT `/api/peers/<peer_id>` - Update peer
+- DELETE `/api/peers/<peer_id>` - Remove peer (peer_id is UUID)
+- GET `/api/peers/<peer_id>/config` - Generate config file (peer_id is UUID)
+- POST `/api/peers/generate-keys` - Generate new keypair
 
 #### 2.5 Configuration Management (config.py)
 ```python

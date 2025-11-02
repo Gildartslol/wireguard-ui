@@ -64,7 +64,7 @@
               </tr>
             </thead>
             <tbody>
-              <tr v-for="peer in peers" :key="peer.public_key">
+              <tr v-for="peer in peers" :key="peer.id">
                 <td>
                   <div class="badge" :class="peer.connected ? 'badge-success' : 'badge-error'">
                     {{ peer.connected ? 'Connected' : 'Disconnected' }}

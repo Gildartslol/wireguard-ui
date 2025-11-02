@@ -76,24 +76,24 @@ export default {
     return api.post('/peers', peerData)
   },
 
-  getPeer(publicKey) {
-    return api.get(`/peers/${publicKey}`)
+  getPeer(peerId) {
+    return api.get(`/peers/${peerId}`)
   },
 
-  updatePeer(publicKey, peerData) {
-    return api.put(`/peers/${publicKey}`, peerData)
+  updatePeer(peerId, peerData) {
+    return api.put(`/peers/${peerId}`, peerData)
   },
 
-  deletePeer(publicKey) {
-    return api.delete(`/peers/${publicKey}`)
+  deletePeer(peerId) {
+    return api.delete(`/peers/${peerId}`)
   },
 
   generateKeys() {
     return api.post('/peers/generate-keys')
   },
 
-  getPeerConfig(publicKey, privateKey) {
-    return api.get(`/peers/${publicKey}/config`, {
+  getPeerConfig(peerId, privateKey) {
+    return api.get(`/peers/${peerId}/config`, {
       params: { private_key: privateKey },
       responseType: 'blob'
     })

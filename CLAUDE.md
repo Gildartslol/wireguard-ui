@@ -185,15 +185,16 @@ Uses subprocess calls to the `wg` command-line tool for WireGuard management. **
 ### Database Models (models.py)
 
 **User**:
-- `id`, `username`, `password_hash`, `created_at`, `last_login`
+- `id` (Integer), `username`, `password_hash`, `created_at`, `last_login`
 - Password hashing via Werkzeug
 
 **Peer**:
-- `id`, `public_key` (unique, 44 chars), `name`, `allowed_ips`, `description`, `created_at`
+- `id` (UUID v4, String 36 - primary key), `public_key` (unique, 44 chars), `name`, `allowed_ips`, `description`, `created_at`
+- UUID used for API identification, public_key used for WireGuard operations
 - Stored in database, synchronized with WireGuard kernel state
 
 **ConnectionHistory**:
-- `id`, `peer_id` (FK), `timestamp`, `event_type` (connected/disconnected), `endpoint`, `latest_handshake`, `transfer_rx`, `transfer_tx`
+- `id` (Integer), `peer_id` (UUID, FK to Peer.id), `public_key`, `timestamp`, `event_type` (connected/disconnected), `endpoint`, `latest_handshake`, `transfer_rx`, `transfer_tx`
 - Used for historical tracking and bandwidth visualization
 
 ### API Routes
@@ -211,9 +212,13 @@ Uses subprocess calls to the `wg` command-line tool for WireGuard management. **
 **Peers** (routes/peers.py):
 - `GET /api/peers`: List all configured peers (DB + WireGuard state merge)
 - `POST /api/peers`: Add peer (creates in DB, adds to WireGuard)
-- `DELETE /api/peers/<public_key>`: Remove peer (removes from both)
-- `GET /api/peers/<public_key>/config`: Download .conf file
-- `POST /api/peers/generate`: Generate new keypair
+- `GET /api/peers/<peer_id>`: Get single peer details
+- `PUT /api/peers/<peer_id>`: Update peer (name, description, allowed_ips)
+- `DELETE /api/peers/<peer_id>`: Remove peer (removes from both)
+- `GET /api/peers/<peer_id>/config`: Download .conf file
+- `POST /api/peers/generate-keys`: Generate new keypair
+
+Note: `<peer_id>` is a UUID v4 identifier for API access. Internally, WireGuard operations still use the public_key.
 
 All routes except `/api/auth/login` require `@login_required` decorator.
 

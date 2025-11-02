@@ -2,6 +2,7 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_login import UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime
+import uuid
 
 db = SQLAlchemy()
 
@@ -47,7 +48,7 @@ class Peer(db.Model):
     """WireGuard peer metadata"""
     __tablename__ = 'peers'
 
-    id = db.Column(db.Integer, primary_key=True)
+    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     public_key = db.Column(db.String(44), unique=True, nullable=False, index=True)
     name = db.Column(db.String(100), nullable=False)
     allowed_ips = db.Column(db.Text, nullable=False)
@@ -82,7 +83,7 @@ class ConnectionHistory(db.Model):
     __tablename__ = 'connection_history'
 
     id = db.Column(db.Integer, primary_key=True)
-    peer_id = db.Column(db.Integer, db.ForeignKey('peers.id'))
+    peer_id = db.Column(db.String(36), db.ForeignKey('peers.id'))
     public_key = db.Column(db.String(44), nullable=False, index=True)
     status = db.Column(db.String(20), nullable=False)  # 'connected', 'disconnected'
     endpoint = db.Column(db.String(100))

@@ -132,9 +132,9 @@ const addPeer = async () => {
   }
 }
 
-const updatePeer = async (publicKey, updates) => {
+const updatePeer = async (peerId, updates) => {
   try {
-    await api.updatePeer(publicKey, updates)
+    await api.updatePeer(peerId, updates)
     await fetchPeers()
   } catch (error) {
     console.error('Error updating peer:', error)
@@ -142,11 +142,11 @@ const updatePeer = async (publicKey, updates) => {
   }
 }
 
-const deletePeer = async (publicKey) => {
+const deletePeer = async (peerId) => {
   if (!confirm('Are you sure you want to delete this peer?')) return
 
   try {
-    await api.deletePeer(publicKey)
+    await api.deletePeer(peerId)
     fetchPeers()
   } catch (error) {
     console.error('Error deleting peer:', error)
@@ -161,7 +161,7 @@ const downloadConfig = async (peer) => {
   }
 
   try {
-    const response = await api.getPeerConfig(peer.public_key, generatedKeys.value.private_key)
+    const response = await api.getPeerConfig(peer.id, generatedKeys.value.private_key)
     const url = window.URL.createObjectURL(new Blob([response.data]))
     const link = document.createElement('a')
     link.href = url
