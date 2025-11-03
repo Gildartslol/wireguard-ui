@@ -294,18 +294,14 @@ def create_mock_database():
     scenario = os.getenv('WG_MOCK_SCENARIO', 'mixed')
     logger.info(f"Creating mock database for scenario: {scenario}")
 
-    # Create Flask app context
+    # Set DATABASE_URI environment variable BEFORE creating app
+    # This ensures create_app() uses the mock database
+    os.environ['DATABASE_URI'] = 'sqlite:///wg_dashboard_mock.db'
+
+    # Create Flask app context (will use DATABASE_URI from environment)
     app = create_app()
 
     with app.app_context():
-        # OVERRIDE database URI to explicitly use mock database file
-        # This script ALWAYS creates wg_dashboard_mock.db regardless of environment
-        app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///wg_dashboard_mock.db'
-
-        # Reinitialize db with the correct URI
-        from models import db as db_instance
-        db_instance.init_app(app)
-
         # Show where database will be created
         db_uri = app.config['SQLALCHEMY_DATABASE_URI']
         logger.info(f"Database URI: {db_uri}")
