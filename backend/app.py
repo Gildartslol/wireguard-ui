@@ -59,6 +59,25 @@ def create_app(config_name='default'):
         db.create_all()
         logger.info("Database tables created/verified")
 
+        # Create system client for unregistered peers
+        from models import Client
+        system_client = Client.query.filter_by(name='Unregistered Peers').first()
+        if not system_client:
+            system_client = Client(
+                name='Unregistered Peers',
+                subnet_range='0.0.0.0/0',
+                location='System',
+                description='Auto-generated client for peers added via WireGuard CLI',
+                is_active=True,
+                is_system=True,
+                created_by=1  # System user (admin)
+            )
+            db.session.add(system_client)
+            db.session.commit()
+            logger.info("Created 'Unregistered Peers' system client")
+        else:
+            logger.info("System client 'Unregistered Peers' already exists")
+
         # Log database and mode information
         db_uri = app.config.get('SQLALCHEMY_DATABASE_URI', 'NOT SET')
         mock_mode = os.getenv('WG_MOCK_MODE', 'false').lower() == 'true'

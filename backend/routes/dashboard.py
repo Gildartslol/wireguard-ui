@@ -62,42 +62,26 @@ def get_active_peers():
         500: Error getting peers
     """
     try:
+        from routes.peer_utils import enrich_wireguard_peers
+
         wg_interface = current_app.config.get('WG_INTERFACE', 'wg0')
         wg_manager = WireGuardManager(wg_interface)
 
         # Get active peers from WireGuard
         active_peers = wg_manager.get_active_peers()
 
-        # Enrich with database metadata
-        enriched_peers = []
-        for peer in active_peers:
-            # Get peer metadata from database
-            peer_db = Peer.query.filter_by(public_key=peer['public_key']).first()
-
-            if not peer_db:
-                # Skip peers not in database (shouldn't happen with database-based mocks)
-                logger.warning(f"Peer not found in database: {peer['public_key'][:12]}...")
-                continue
-
-            peer_data = {
-                **peer,
-                'id': peer_db.id,
-                'name': peer_db.name,
-                'description': peer_db.description,
-                'created_at': peer_db.created_at.isoformat() if peer_db.created_at else None,
-                'client_id': peer_db.client_id,
-                'client': {
-                    'id': peer_db.client.id,
-                    'name': peer_db.client.name,
-                    'is_active': peer_db.client.is_active
-                } if peer_db.client else None,
-                'is_router': peer_db.is_router
-            }
-
-            enriched_peers.append(peer_data)
+        # Enrich with database metadata using shared helper
+        # Dashboard doesn't show orphaned peers (only actively configured ones)
+        enriched_peers = enrich_wireguard_peers(
+            active_peers,
+            create_unknown=True,  # Auto-create DB entries for unknown peers
+            include_orphaned=False  # Don't show orphaned DB entries on dashboard
+        )
 
         # Sort by connection status (connected first) and then by name
         enriched_peers.sort(key=lambda x: (not x['connected'], x['name'].lower()))
+
+        logger.info(f"Dashboard showing {len(enriched_peers)} active peers")
 
         return jsonify(enriched_peers), 200
 

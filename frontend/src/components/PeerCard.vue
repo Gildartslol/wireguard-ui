@@ -33,8 +33,19 @@
         </div>
       </div>
 
-      <!-- Badges -->
-      <div class="flex gap-2 mt-2">
+      <!-- Status and Badges -->
+      <div class="flex flex-wrap gap-2 mt-2">
+        <!-- Connection Status -->
+        <span v-if="peer.configured === false" class="badge badge-warning" title="Peer exists in database but not in WireGuard">
+          ⚠️ Not Configured
+        </span>
+        <span v-else-if="peer.connected" class="badge badge-success" title="Peer is actively connected">
+          ✓ Connected
+        </span>
+        <span v-else class="badge badge-error" title="Peer is disconnected">
+          ✗ Disconnected
+        </span>
+
         <span v-if="peer.is_router" class="badge badge-accent">Router</span>
         <span v-if="peer.client" class="badge badge-info" :title="`Client: ${peer.client.name}`">
           {{ peer.client.name }}
@@ -50,6 +61,26 @@
         <div class="text-sm">
           <span class="font-semibold">Allowed IPs:</span>
           <div class="mt-1">{{ formatAllowedIPs(peer.allowed_ips) }}</div>
+        </div>
+
+        <!-- Real-time Connection Data -->
+        <div v-if="peer.endpoint" class="text-sm">
+          <span class="font-semibold">Endpoint:</span>
+          <div class="mt-1">{{ peer.endpoint }}</div>
+        </div>
+
+        <div v-if="peer.latest_handshake" class="text-sm">
+          <span class="font-semibold">Last Handshake:</span>
+          <div class="mt-1">{{ formatHandshake(peer.latest_handshake) }}</div>
+        </div>
+
+        <div v-if="peer.transfer_rx !== undefined || peer.transfer_tx !== undefined" class="text-sm">
+          <span class="font-semibold">Transfer:</span>
+          <div class="mt-1">
+            <span class="text-xs">↓ {{ formatBytes(peer.transfer_rx) }}</span>
+            <span class="mx-2">|</span>
+            <span class="text-xs">↑ {{ formatBytes(peer.transfer_tx) }}</span>
+          </div>
         </div>
 
         <div v-if="peer.description" class="text-sm">
@@ -145,5 +176,29 @@ const formatAllowedIPs = (ips) => {
 const formatDate = (isoString) => {
   if (!isoString) return 'N/A'
   return new Date(isoString).toLocaleDateString()
+}
+
+const formatBytes = (bytes) => {
+  if (!bytes || bytes === 0) return '0 B'
+  const k = 1024
+  const sizes = ['B', 'KB', 'MB', 'GB', 'TB']
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i]
+}
+
+const formatHandshake = (isoString) => {
+  if (!isoString) return 'Never'
+  const date = new Date(isoString)
+  const now = new Date()
+  const diffMs = now - date
+  const diffSecs = Math.floor(diffMs / 1000)
+  const diffMins = Math.floor(diffSecs / 60)
+  const diffHours = Math.floor(diffMins / 60)
+  const diffDays = Math.floor(diffHours / 24)
+
+  if (diffDays > 0) return `${diffDays}d ago`
+  if (diffHours > 0) return `${diffHours}h ago`
+  if (diffMins > 0) return `${diffMins}m ago`
+  return `${diffSecs}s ago`
 }
 </script>

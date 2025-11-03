@@ -54,6 +54,7 @@ class Client(db.Model):
     location = db.Column(db.String(200))
     description = db.Column(db.Text)
     is_active = db.Column(db.Boolean, default=True)
+    is_system = db.Column(db.Boolean, default=False)  # System clients cannot be deleted
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     created_by = db.Column(db.Integer, db.ForeignKey('users.id'))
 
@@ -69,6 +70,7 @@ class Client(db.Model):
             'location': self.location,
             'description': self.description,
             'is_active': self.is_active,
+            'is_system': self.is_system,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'created_by': self.created_by,
             'peer_count': len(self.peers) if hasattr(self, 'peers') else 0

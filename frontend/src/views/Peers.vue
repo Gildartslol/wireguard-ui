@@ -26,10 +26,14 @@
           <div class="flex items-center justify-between">
             <div>
               <span class="font-bold">{{ group.client.name }}</span>
-              <span v-if="group.client.subnet_range" class="ml-2 text-sm text-gray-500">
+              <span v-if="group.client.is_system" class="ml-2 badge badge-neutral badge-sm">System</span>
+              <span v-if="group.client.subnet_range && group.client.subnet_range !== '0.0.0.0/0'" class="ml-2 text-sm text-gray-500">
                 {{ group.client.subnet_range }}
               </span>
               <span class="ml-2 badge badge-primary">{{ group.peers.length }} peer{{ group.peers.length !== 1 ? 's' : '' }}</span>
+              <span v-if="group.stats.connected > 0" class="ml-2 badge badge-success">{{ group.stats.connected }} connected</span>
+              <span v-if="group.stats.disconnected > 0" class="ml-2 badge badge-error">{{ group.stats.disconnected }} disconnected</span>
+              <span v-if="group.stats.orphaned > 0" class="ml-2 badge badge-warning">{{ group.stats.orphaned }} not configured</span>
             </div>
             <div v-if="!group.client.is_active" class="badge badge-warning">Inactive</div>
           </div>
@@ -106,12 +110,12 @@
             <label class="label"><span class="label-text">Client (Optional)</span></label>
             <select v-model="newPeer.client_id" class="select select-bordered">
               <option :value="null">Unassigned</option>
-              <option v-for="client in clients" :key="client.id" :value="client.id">
+              <option v-for="client in nonSystemClients" :key="client.id" :value="client.id">
                 {{ client.name }} - {{ client.subnet_range }}
               </option>
             </select>
             <label class="label">
-              <span class="label-text-alt">Assign this peer to a client site</span>
+              <span class="label-text-alt">Assign this peer to a client site (system clients hidden)</span>
             </label>
           </div>
 
@@ -162,6 +166,11 @@ const newPeer = ref({
   is_router: false
 })
 
+// Filter out system clients for peer assignment dropdown
+const nonSystemClients = computed(() => {
+  return clients.value.filter(client => !client.is_system)
+})
+
 // Group peers by client
 const groupedPeers = computed(() => {
   const groups = {
@@ -176,10 +185,24 @@ const groupedPeers = computed(() => {
       if (!groups.clients[peer.client_id]) {
         groups.clients[peer.client_id] = {
           client: peer.client,
-          peers: []
+          peers: [],
+          stats: {
+            connected: 0,
+            disconnected: 0,
+            orphaned: 0
+          }
         }
       }
       groups.clients[peer.client_id].peers.push(peer)
+
+      // Calculate stats for this group
+      if (peer.configured === false) {
+        groups.clients[peer.client_id].stats.orphaned++
+      } else if (peer.connected) {
+        groups.clients[peer.client_id].stats.connected++
+      } else {
+        groups.clients[peer.client_id].stats.disconnected++
+      }
     }
   })
 

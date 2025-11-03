@@ -77,25 +77,36 @@ def create_mock_clients(admin_id):
     """Create mock client organizations"""
     clients_data = [
         {
+            'name': 'Unregistered Peers',
+            'subnet_range': '0.0.0.0/0',
+            'location': 'System',
+            'description': 'Auto-generated client for peers added via WireGuard CLI',
+            'is_active': True,
+            'is_system': True
+        },
+        {
             'name': 'Acme Corp',
             'subnet_range': '10.200.0.0/24',
             'location': 'New York Office',
             'description': 'Primary office network',
-            'is_active': True
+            'is_active': True,
+            'is_system': False
         },
         {
             'name': 'TechStart Inc',
             'subnet_range': '10.200.1.0/24',
             'location': 'San Francisco HQ',
             'description': 'Development environment',
-            'is_active': True
+            'is_active': True,
+            'is_system': False
         },
         {
             'name': 'Legacy Systems Ltd',
             'subnet_range': '10.200.2.0/24',
             'location': 'London Branch',
             'description': 'Legacy infrastructure (archived)',
-            'is_active': False
+            'is_active': False,
+            'is_system': False
         }
     ]
 
@@ -111,6 +122,7 @@ def create_mock_clients(admin_id):
                 location=client_data['location'],
                 description=client_data['description'],
                 is_active=client_data['is_active'],
+                is_system=client_data.get('is_system', False),
                 created_by=admin_id,
                 created_at=datetime.utcnow()
             )
@@ -136,25 +148,25 @@ def seed_scenario_connected(admin_id, clients):
     peer_configs = [
         {
             'name': 'Acme Router',
-            'client_id': clients[0].id,
+            'client_id': clients[1].id,  # clients[1] = Acme Corp
             'is_router': True,
             'description': 'Acme Corp main gateway - actively connected'
         },
         {
             'name': 'Acme Workstation',
-            'client_id': clients[0].id,
+            'client_id': clients[1].id,  # clients[1] = Acme Corp
             'is_router': False,
             'description': 'Acme Corp workstation - actively connected'
         },
         {
             'name': 'TechStart Router',
-            'client_id': clients[1].id,
+            'client_id': clients[2].id,  # clients[2] = TechStart Inc
             'is_router': True,
             'description': 'TechStart Inc gateway - actively connected'
         },
         {
             'name': 'TechStart Dev Server',
-            'client_id': clients[1].id,
+            'client_id': clients[2].id,  # clients[2] = TechStart Inc
             'is_router': False,
             'description': 'TechStart development server - actively connected'
         }
@@ -187,25 +199,25 @@ def seed_scenario_disconnected(admin_id, clients):
     peer_configs = [
         {
             'name': 'Acme Router (Offline)',
-            'client_id': clients[0].id,
+            'client_id': clients[1].id,  # clients[1] = Acme Corp
             'is_router': True,
             'description': 'Acme Corp main gateway - offline'
         },
         {
             'name': 'Acme Workstation (Offline)',
-            'client_id': clients[0].id,
+            'client_id': clients[1].id,  # clients[1] = Acme Corp
             'is_router': False,
             'description': 'Acme Corp workstation - offline'
         },
         {
             'name': 'TechStart Router (Offline)',
-            'client_id': clients[1].id,
+            'client_id': clients[2].id,  # clients[2] = TechStart Inc
             'is_router': True,
             'description': 'TechStart Inc gateway - offline'
         },
         {
             'name': 'TechStart Dev Server (Offline)',
-            'client_id': clients[1].id,
+            'client_id': clients[2].id,  # clients[2] = TechStart Inc
             'is_router': False,
             'description': 'TechStart development server - offline'
         }
@@ -238,31 +250,31 @@ def seed_scenario_mixed(admin_id, clients):
     peer_configs = [
         {
             'name': 'Acme Router',
-            'client_id': clients[0].id,
+            'client_id': clients[1].id,  # clients[1] = Acme Corp
             'is_router': True,
             'description': 'Acme Corp main gateway - connected'
         },
         {
             'name': 'Acme Workstation',
-            'client_id': clients[0].id,
+            'client_id': clients[1].id,  # clients[1] = Acme Corp
             'is_router': False,
             'description': 'Acme Corp workstation - disconnected'
         },
         {
             'name': 'TechStart Router',
-            'client_id': clients[1].id,
+            'client_id': clients[2].id,  # clients[2] = TechStart Inc
             'is_router': True,
             'description': 'TechStart Inc gateway - connected'
         },
         {
             'name': 'TechStart Dev Server',
-            'client_id': clients[1].id,
+            'client_id': clients[2].id,  # clients[2] = TechStart Inc
             'is_router': False,
             'description': 'TechStart development server - recently connected'
         },
         {
             'name': 'Legacy Router (Inactive)',
-            'client_id': clients[2].id,
+            'client_id': clients[3].id,  # clients[3] = Legacy Systems Ltd
             'is_router': True,
             'description': 'Legacy Systems gateway - inactive client'
         }

@@ -14,18 +14,42 @@ peers_bp = Blueprint('peers', __name__, url_prefix='/api/peers')
 @login_required
 def list_peers():
     """
-    List all configured peers from database
+    List all configured peers from WireGuard with database enrichment
+
+    This endpoint uses WireGuard as the source of truth for peer configuration,
+    enriched with metadata from the database (names, client assignments, etc.).
 
     Returns:
-        200: List of peers
+        200: List of enriched peers (WireGuard data + database metadata)
         500: Error listing peers
     """
     try:
-        # Read from database (works for both mock and live mode)
-        peers = Peer.query.order_by(Peer.created_at.desc()).all()
-        peers_data = [peer.to_dict() for peer in peers]
+        from routes.peer_utils import enrich_wireguard_peers
 
-        return jsonify(peers_data), 200
+        # Get WireGuard peers (source of truth)
+        wg_interface = current_app.config.get('WG_INTERFACE', 'wg0')
+        wg_manager = WireGuardManager(wg_interface)
+        wg_peers = wg_manager.get_active_peers()
+
+        # Enrich with database metadata
+        # - create_unknown=True: Auto-create DB entries for unknown peers
+        # - include_orphaned=True: Also show peers in DB but not in WireGuard
+        enriched = enrich_wireguard_peers(
+            wg_peers,
+            create_unknown=True,
+            include_orphaned=True
+        )
+
+        # Sort by client name, then connection status, then peer name
+        enriched.sort(key=lambda x: (
+            x.get('client', {}).get('name', 'ZZZ') if x.get('client') else 'ZZZ',  # Unassigned last
+            not x.get('connected', False),  # Connected first
+            x.get('name', '').lower()
+        ))
+
+        logger.info(f"Listed {len(enriched)} peers ({len(wg_peers)} from WireGuard)")
+
+        return jsonify(enriched), 200
 
     except Exception as e:
         logger.error(f"Error listing peers: {e}")
