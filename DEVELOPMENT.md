@@ -2,6 +2,57 @@
 
 This guide explains how to run the WireGuard UI in development mode vs production mode.
 
+---
+
+## Architecture Overview
+
+### WireGuard as Source of Truth
+
+The application follows a **WireGuard-first architecture** where:
+
+- **WireGuard** is the single source of truth for:
+  - Which peers are configured
+  - Connection status (connected/disconnected)
+  - Real-time transfer statistics (RX/TX bytes)
+  - Endpoint information
+  - Latest handshake timestamps
+
+- **Database** provides enrichment metadata only:
+  - Human-readable peer names
+  - Client/organization grouping
+  - Descriptions and notes
+  - Historical tracking
+  - Audit trail (who created what, when)
+
+### How It Works
+
+1. **All API endpoints query WireGuard first** via `wg show` commands
+2. **Enrichment happens at runtime** by matching WireGuard peers with database entries by `public_key`
+3. **Unknown peers are auto-created** - if a peer exists in WireGuard but not in database:
+   - Automatically creates database entry with placeholder name
+   - Assigns to "Unregistered Peers" system client
+   - User can reassign to proper client via UI
+4. **Orphaned entries are marked** - if database has peer not in WireGuard:
+   - Shows with "⚠️ Not Configured" warning badge
+   - Allows user to delete or investigate
+
+### Benefits
+
+✅ **Always accurate** - UI shows real WireGuard state, not stale database data
+✅ **Flexible** - Can manually manage WireGuard via CLI if needed
+✅ **Self-healing** - If database gets out of sync, still shows correct data
+✅ **No dual maintenance** - WireGuard config is the only thing to manage
+✅ **Future-proof** - Can migrate databases without touching WireGuard config
+
+### Key Files
+
+- `backend/routes/peer_utils.py` - Shared enrichment logic
+- `backend/routes/peers.py` - `/api/peers` endpoint (queries WireGuard)
+- `backend/routes/dashboard.py` - `/api/dashboard/peers` endpoint
+- `backend/wg_manager.py` - WireGuard command wrapper
+
+---
+
 ## Development Mode (Recommended for Development)
 
 Use this mode when actively developing or testing changes. Provides instant hot-reload for both backend and frontend.
@@ -302,3 +353,102 @@ ls -la /opt/wireguard-ui/
    - Systemd service management
    - Nginx reverse proxy for HTTPS
    - Production environment variables
+
+---
+
+## Testing the New Architecture
+
+### Testing WireGuard as Source of Truth
+
+The new architecture can be tested in mock mode without requiring WireGuard installation.
+
+**Scenario 1: Normal Operation**
+```bash
+# On your VM, pull latest changes
+cd /opt/wireguard-ui
+git pull
+
+# Recreate mock database with new schema
+cd backend
+source venv/bin/activate
+WG_MOCK_SCENARIO=mixed python3 create_mock_db.py
+
+# Restart service
+sudo systemctl restart wg-dashboard
+```
+
+You should see:
+- "Unregistered Peers" system client in the clients list
+- Peers grouped by client with connection status badges
+- Connected/disconnected/orphaned counts per client
+- Real-time data: endpoint, last handshake, transfer stats
+
+**Scenario 2: CLI-Added Peer Simulation**
+
+In mock mode, peers are created from the database. On a live system with WireGuard:
+
+```bash
+# Add peer directly via WireGuard CLI
+sudo wg set wg0 peer <PUBLIC_KEY> allowed-ips 10.0.0.99/32
+
+# Check UI - peer should appear under "Unregistered Peers"
+# with auto-generated name like "Unknown Peer <pubkey>"
+```
+
+**Scenario 3: Orphaned Database Entry**
+
+```bash
+# In database, create a peer that doesn't exist in WireGuard
+# (This would happen if you removed peer from WireGuard but not DB)
+
+# UI should show peer with "⚠️ Not Configured" warning badge
+```
+
+### Verifying Mock Mode Behavior
+
+1. **Check logs** for mode indicator:
+   ```bash
+   sudo journalctl -u wg-dashboard -f
+   ```
+
+   Should show:
+   ```
+   🧪 MOCK MODE ENABLED
+      Scenario: mixed
+      Database: sqlite:///wg_dashboard_mock.db
+   ```
+
+2. **Check database location**:
+   ```bash
+   ls -lh /opt/wireguard-ui/backend/instance/
+   ```
+
+   Should show both:
+   - `wg_dashboard.db` (production)
+   - `wg_dashboard_mock.db` (mock mode)
+
+3. **Verify API response** includes real-time fields:
+   ```bash
+   # Login first, then:
+   curl -b cookies.txt http://localhost:5000/api/peers | jq '.[0]'
+   ```
+
+   Should include:
+   - `connected`: true/false
+   - `transfer_rx`: number
+   - `transfer_tx`: number
+   - `latest_handshake`: ISO timestamp or null
+   - `endpoint`: "IP:PORT" or null
+   - `configured`: true (if in WireGuard) or false (if orphaned)
+
+### Manual Testing Checklist
+
+- [ ] Peers show connection status badges (✓ Connected, ✗ Disconnected)
+- [ ] Client groups show connected/disconnected counts
+- [ ] "Unregistered Peers" system client exists
+- [ ] System clients don't appear in "Add Peer" client dropdown
+- [ ] Transfer statistics display (↓ RX | ↑ TX)
+- [ ] Last handshake shows relative time (e.g., "5m ago")
+- [ ] Orphaned peers show "⚠️ Not Configured" badge
+- [ ] Can reassign peer from "Unregistered Peers" to proper client
+- [ ] Deleting peer removes from both WireGuard and database
