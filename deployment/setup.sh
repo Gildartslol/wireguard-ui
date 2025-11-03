@@ -57,7 +57,13 @@ if [ ! -f .env ]; then
 fi
 
 echo ""
-echo "6. Initializing production database..."
+echo "6. Preparing instance directory for databases..."
+mkdir -p backend/instance
+chmod 775 backend/instance
+echo "   ✓ Instance directory created: $INSTALL_DIR/backend/instance/"
+
+echo ""
+echo "6a. Initializing production database..."
 echo "   Location: $INSTALL_DIR/backend/instance/wg_dashboard.db"
 python -c "from app import create_app; app = create_app(); app.app_context().push(); from models import db; db.create_all()"
 if [ -f backend/instance/wg_dashboard.db ]; then
@@ -70,14 +76,24 @@ fi
 echo ""
 echo "6b. Creating mock database for testing..."
 echo "   Location: $INSTALL_DIR/backend/instance/wg_dashboard_mock.db"
-WG_MOCK_MODE=true WG_MOCK_SCENARIO=mixed python3 create_mock_db.py
-if [ -f backend/instance/wg_dashboard_mock.db ]; then
-    echo "   ✓ Mock database created successfully"
-    ls -lh backend/instance/wg_dashboard_mock.db
+if WG_MOCK_MODE=true WG_MOCK_SCENARIO=mixed python3 create_mock_db.py 2>&1 | tee /tmp/mock_db_creation.log; then
+    if [ -f backend/instance/wg_dashboard_mock.db ]; then
+        echo "   ✓ Mock database created successfully"
+        ls -lh backend/instance/wg_dashboard_mock.db
+    else
+        echo "   ⚠ WARNING: Mock database script succeeded but file not found!"
+        echo "   Check the log at /tmp/mock_db_creation.log"
+    fi
 else
-    echo "   ⚠ WARNING: Mock database not found!"
-    echo "   You may need to create it manually later with:"
-    echo "   cd $INSTALL_DIR/backend && WG_MOCK_MODE=true WG_MOCK_SCENARIO=mixed python3 create_mock_db.py"
+    echo "   ✗ ERROR: Mock database creation failed!"
+    echo "   Check the log at /tmp/mock_db_creation.log"
+    echo ""
+    echo "   To create it manually after installation completes:"
+    echo "   1. cd $INSTALL_DIR/backend"
+    echo "   2. source venv/bin/activate"
+    echo "   3. WG_MOCK_MODE=true WG_MOCK_SCENARIO=mixed python3 create_mock_db.py"
+    echo "   4. deactivate"
+    echo "   5. cd $INSTALL_DIR && sudo bash deployment/fix_db_permissions.sh"
 fi
 
 echo ""
@@ -112,21 +128,27 @@ chown -R wireguard:wireguard .
 
 echo ""
 echo "9c. Setting database permissions..."
-# Ensure instance directory exists and is writable
+# Ensure instance directory exists and is writable by wireguard user
 mkdir -p backend/instance
 chown wireguard:wireguard backend/instance
 chmod 775 backend/instance
+echo "   ✓ Fixed backend/instance/ directory permissions"
 
 # Ensure database files are writable by wireguard user
 if [ -f backend/instance/wg_dashboard.db ]; then
     chown wireguard:wireguard backend/instance/wg_dashboard.db
     chmod 664 backend/instance/wg_dashboard.db
     echo "   ✓ Fixed wg_dashboard.db permissions"
+else
+    echo "   ⚠ Production database not found (will be created on first run)"
 fi
+
 if [ -f backend/instance/wg_dashboard_mock.db ]; then
     chown wireguard:wireguard backend/instance/wg_dashboard_mock.db
     chmod 664 backend/instance/wg_dashboard_mock.db
     echo "   ✓ Fixed wg_dashboard_mock.db permissions"
+else
+    echo "   ⚠ Mock database not found (create manually if needed)"
 fi
 
 echo ""
@@ -163,7 +185,14 @@ if [ -f $INSTALL_DIR/backend/instance/wg_dashboard_mock.db ]; then
     echo "✓ Mock DB:       $INSTALL_DIR/backend/instance/wg_dashboard_mock.db"
     echo "                 Admin login: username=admin, password=admin"
 else
-    echo "✗ Mock DB:       NOT FOUND (create manually if needed for testing)"
+    echo "✗ Mock DB:       NOT FOUND"
+    echo ""
+    echo "  To create mock database for testing:"
+    echo "  1. cd $INSTALL_DIR/backend && source venv/bin/activate"
+    echo "  2. WG_MOCK_MODE=true WG_MOCK_SCENARIO=mixed python3 create_mock_db.py"
+    echo "  3. deactivate"
+    echo "  4. cd $INSTALL_DIR && sudo bash deployment/fix_db_permissions.sh"
+    echo "  5. sudo systemctl restart wg-dashboard"
 fi
 echo ""
 echo "Mock Mode Testing:"
