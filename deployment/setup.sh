@@ -85,6 +85,21 @@ cd $INSTALL_DIR
 chown -R wireguard:wireguard .
 
 echo ""
+echo "9c. Setting database permissions..."
+# Ensure database files are writable by wireguard user
+if [ -f backend/wg_dashboard.db ]; then
+    chown wireguard:wireguard backend/wg_dashboard.db
+    chmod 664 backend/wg_dashboard.db
+fi
+if [ -f backend/wg_dashboard_mock.db ]; then
+    chown wireguard:wireguard backend/wg_dashboard_mock.db
+    chmod 664 backend/wg_dashboard_mock.db
+fi
+# Ensure backend directory is writable (for SQLite journal files)
+chown wireguard:wireguard backend/
+chmod 775 backend/
+
+echo ""
 echo "10. Installing systemd service..."
 cp $INSTALL_DIR/deployment/wg-dashboard.service /etc/systemd/system/
 sed -i "s|/opt/wireguard-ui|$INSTALL_DIR|g" /etc/systemd/system/wg-dashboard.service
