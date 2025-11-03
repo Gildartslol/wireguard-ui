@@ -86,18 +86,22 @@ chown -R wireguard:wireguard .
 
 echo ""
 echo "9c. Setting database permissions..."
+# Ensure instance directory exists and is writable
+mkdir -p backend/instance
+chown wireguard:wireguard backend/instance
+chmod 775 backend/instance
+
 # Ensure database files are writable by wireguard user
-if [ -f backend/wg_dashboard.db ]; then
-    chown wireguard:wireguard backend/wg_dashboard.db
-    chmod 664 backend/wg_dashboard.db
+if [ -f backend/instance/wg_dashboard.db ]; then
+    chown wireguard:wireguard backend/instance/wg_dashboard.db
+    chmod 664 backend/instance/wg_dashboard.db
+    echo "   ✓ Fixed wg_dashboard.db permissions"
 fi
-if [ -f backend/wg_dashboard_mock.db ]; then
-    chown wireguard:wireguard backend/wg_dashboard_mock.db
-    chmod 664 backend/wg_dashboard_mock.db
+if [ -f backend/instance/wg_dashboard_mock.db ]; then
+    chown wireguard:wireguard backend/instance/wg_dashboard_mock.db
+    chmod 664 backend/instance/wg_dashboard_mock.db
+    echo "   ✓ Fixed wg_dashboard_mock.db permissions"
 fi
-# Ensure backend directory is writable (for SQLite journal files)
-chown wireguard:wireguard backend/
-chmod 775 backend/
 
 echo ""
 echo "10. Installing systemd service..."

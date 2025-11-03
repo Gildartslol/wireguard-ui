@@ -31,29 +31,30 @@ cd $INSTALL_DIR
 echo "1. Setting ownership to wireguard:wireguard..."
 chown -R wireguard:wireguard .
 
+# Fix instance directory (Flask stores databases here)
+echo "2. Setting instance directory permissions..."
+mkdir -p backend/instance
+chown wireguard:wireguard backend/instance
+chmod 775 backend/instance
+echo "   ✓ Fixed backend/instance/ directory"
+
 # Fix database files specifically
-echo "2. Setting database file permissions..."
-if [ -f backend/wg_dashboard.db ]; then
-    chown wireguard:wireguard backend/wg_dashboard.db
-    chmod 664 backend/wg_dashboard.db
+echo "3. Setting database file permissions..."
+if [ -f backend/instance/wg_dashboard.db ]; then
+    chown wireguard:wireguard backend/instance/wg_dashboard.db
+    chmod 664 backend/instance/wg_dashboard.db
     echo "   ✓ Fixed wg_dashboard.db"
 else
-    echo "   ⚠ wg_dashboard.db not found"
+    echo "   ⚠ wg_dashboard.db not found at backend/instance/"
 fi
 
-if [ -f backend/wg_dashboard_mock.db ]; then
-    chown wireguard:wireguard backend/wg_dashboard_mock.db
-    chmod 664 backend/wg_dashboard_mock.db
+if [ -f backend/instance/wg_dashboard_mock.db ]; then
+    chown wireguard:wireguard backend/instance/wg_dashboard_mock.db
+    chmod 664 backend/instance/wg_dashboard_mock.db
     echo "   ✓ Fixed wg_dashboard_mock.db"
 else
-    echo "   ⚠ wg_dashboard_mock.db not found"
+    echo "   ⚠ wg_dashboard_mock.db not found at backend/instance/"
 fi
-
-# Fix backend directory (SQLite needs to create journal files)
-echo "3. Setting backend directory permissions..."
-chown wireguard:wireguard backend/
-chmod 775 backend/
-echo "   ✓ Fixed backend/ directory"
 
 echo ""
 echo "✓ Permissions fixed!"

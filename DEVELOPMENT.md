@@ -188,10 +188,17 @@ WG_MOCK_MODE=true WG_MOCK_SCENARIO=empty python3 create_mock_db.py
 
 ### Mock Database Location
 
-- Production database: `backend/wg_dashboard.db`
-- Mock database: `backend/wg_dashboard_mock.db`
+Flask stores SQLite databases in the `instance/` folder:
 
-Both databases have the same schema and are version controlled (mock DB only).
+- Production database: `backend/instance/wg_dashboard.db`
+- Mock database: `backend/instance/wg_dashboard_mock.db`
+
+Both databases have the same schema. The instance folder is automatically created by Flask.
+
+**On production server:**
+```bash
+ls -lh /opt/wireguard-ui/backend/instance/
+```
 
 ---
 
@@ -233,13 +240,19 @@ ls -la /opt/wireguard-ui/
 - Verify `.env` file exists: `cat backend/.env | grep MOCK`
 - Check logs show "MOCK MODE": `sudo journalctl -u wg-dashboard -f`
 - Remember: shell exports don't work with systemd, must use `.env`
-- Ensure mock database exists: `ls -lh backend/wg_dashboard_mock.db`
+- Ensure mock database exists: `ls -lh backend/instance/wg_dashboard_mock.db`
 - If missing, create it: `WG_MOCK_MODE=true WG_MOCK_SCENARIO=mixed python3 backend/create_mock_db.py`
 
 **No peers showing in mock mode:**
-- Check that mock database was created: `ls -lh backend/wg_dashboard_mock.db`
+- Check that mock database was created: `ls -lh backend/instance/wg_dashboard_mock.db`
 - Verify scenario has peers: `empty` scenario has 0 peers, try `mixed` instead
 - Recreate mock database with desired scenario
+
+**"readonly database" errors:**
+- Check permissions: `ls -lh /opt/wireguard-ui/backend/instance/`
+- Fix with: `sudo bash /opt/wireguard-ui/deployment/fix_db_permissions.sh`
+- Database files need: `664` (rw-rw-r--) owned by `wireguard:wireguard`
+- Instance directory needs: `775` (rwxrwxr-x) owned by `wireguard:wireguard`
 
 ---
 
