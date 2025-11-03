@@ -13,12 +13,11 @@ class Config:
     FLASK_ENV = os.getenv('FLASK_ENV', 'development')
 
     # Database Configuration
-    # Use separate database file for mock mode
-    _mock_mode = os.getenv('WG_MOCK_MODE', 'false').lower() == 'true'
-    _db_name = 'wg_dashboard_mock.db' if _mock_mode else 'wg_dashboard.db'
-    SQLALCHEMY_DATABASE_URI = os.getenv('DATABASE_URI', f'sqlite:///{_db_name}')
+    # NOTE: Database URI is set dynamically in init_app based on WG_MOCK_MODE
+    # This allows the environment variable to be set after class definition
+    SQLALCHEMY_DATABASE_URI = None  # Will be set in init_app
     SQLALCHEMY_TRACK_MODIFICATIONS = False
-    SQLALCHEMY_ECHO = FLASK_ENV == 'development'
+    SQLALCHEMY_ECHO = os.getenv('FLASK_ENV', 'development') == 'development'
 
     # WireGuard Configuration
     WG_INTERFACE = os.getenv('WG_INTERFACE', 'wg0')
@@ -46,7 +45,16 @@ class Config:
     @staticmethod
     def init_app(app):
         """Initialize application with this config"""
-        pass
+        # Set database URI dynamically based on current environment
+        if not app.config.get('SQLALCHEMY_DATABASE_URI'):
+            # Check if DATABASE_URI is explicitly set
+            if os.getenv('DATABASE_URI'):
+                app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URI')
+            else:
+                # Otherwise, determine based on mock mode
+                mock_mode = os.getenv('WG_MOCK_MODE', 'false').lower() == 'true'
+                db_name = 'wg_dashboard_mock.db' if mock_mode else 'wg_dashboard.db'
+                app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{db_name}'
 
 
 class DevelopmentConfig(Config):
