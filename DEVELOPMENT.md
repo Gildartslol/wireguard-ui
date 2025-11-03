@@ -30,12 +30,25 @@ cd backend
 source venv/bin/activate
 
 # For mock mode (no WireGuard required):
-# Mock mode uses a separate database (wg_dashboard_mock.db) pre-populated with test data
-export WG_MOCK_MODE=true
-export WG_MOCK_SCENARIO=mixed  # Options: empty, connected, mixed, disconnected
+# Edit backend/.env and set:
+#   WG_MOCK_MODE=true
+#   WG_MOCK_SCENARIO=mixed
+# Options for WG_MOCK_SCENARIO: empty, connected, mixed, disconnected
 
 # Run Flask dev server
 python3 app.py
+```
+
+**Important**: The app will display in the logs whether it's running in MOCK MODE or PRODUCTION MODE on startup. Look for:
+```
+🧪 MOCK MODE ENABLED
+   Scenario: mixed
+   Database: sqlite:///wg_dashboard_mock.db
+```
+or
+```
+🔴 PRODUCTION MODE
+   Database: sqlite:///wg_dashboard.db
 ```
 
 Flask will run on `http://localhost:5000` (but you won't access this directly)
@@ -254,7 +267,8 @@ ls -la /opt/wireguard-ui/
 
 **Mock mode not working:**
 - Verify `.env` file exists: `cat backend/.env | grep MOCK`
-- Check logs show "MOCK MODE": `sudo journalctl -u wg-dashboard -f`
+- Check logs show "🧪 MOCK MODE ENABLED": `sudo journalctl -u wg-dashboard -f`
+- Verify database path shows `wg_dashboard_mock.db` in logs
 - Remember: shell exports don't work with systemd, must use `.env`
 - Ensure mock database exists: `ls -lh backend/instance/wg_dashboard_mock.db`
 - If missing, create it: `WG_MOCK_SCENARIO=mixed python3 backend/create_mock_db.py`

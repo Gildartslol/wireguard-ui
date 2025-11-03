@@ -59,6 +59,21 @@ def create_app(config_name='default'):
         db.create_all()
         logger.info("Database tables created/verified")
 
+        # Log database and mode information
+        db_uri = app.config.get('SQLALCHEMY_DATABASE_URI', 'NOT SET')
+        mock_mode = os.getenv('WG_MOCK_MODE', 'false').lower() == 'true'
+        mock_scenario = os.getenv('WG_MOCK_SCENARIO', 'N/A')
+
+        logger.info("=" * 60)
+        if mock_mode:
+            logger.info("🧪 MOCK MODE ENABLED")
+            logger.info(f"   Scenario: {mock_scenario}")
+        else:
+            logger.info("🔴 PRODUCTION MODE")
+        logger.info(f"   Database: {db_uri}")
+        logger.info(f"   Instance path: {app.instance_path}")
+        logger.info("=" * 60)
+
     # Serve frontend static files (for production)
     frontend_dist = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'frontend', 'dist')
 
