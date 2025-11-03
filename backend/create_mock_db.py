@@ -305,6 +305,18 @@ def create_mock_database():
     app = create_app()
 
     with app.app_context():
+        # Show where database will be created
+        db_uri = app.config['SQLALCHEMY_DATABASE_URI']
+        logger.info(f"Database URI: {db_uri}")
+
+        # Extract path from URI for display
+        if 'sqlite:///' in db_uri:
+            db_path = db_uri.replace('sqlite:///', '')
+            if not db_path.startswith('/'):
+                # Relative path - show full path
+                import pathlib
+                full_path = pathlib.Path(app.instance_path) / db_path
+                logger.info(f"Database location: {full_path}")
         # Drop all tables and recreate (fresh start)
         logger.info("Dropping existing tables...")
         db.drop_all()
@@ -336,7 +348,18 @@ def create_mock_database():
         logger.info(f"  - Scenario: {scenario}")
         logger.info(f"  - Clients: {len(clients)}")
         logger.info(f"  - Peers: {peers_created}")
-        logger.info(f"  - Database: wg_dashboard_mock.db")
+
+        # Show database location again
+        if 'sqlite:///' in db_uri:
+            db_path = db_uri.replace('sqlite:///', '')
+            if not db_path.startswith('/'):
+                import pathlib
+                full_path = pathlib.Path(app.instance_path) / db_path
+                logger.info(f"  - Location: {full_path}")
+            else:
+                logger.info(f"  - Location: {db_path}")
+        else:
+            logger.info(f"  - Database: wg_dashboard_mock.db")
 
 
 if __name__ == '__main__':

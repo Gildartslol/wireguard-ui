@@ -57,13 +57,28 @@ if [ ! -f .env ]; then
 fi
 
 echo ""
-echo "6. Initializing database..."
+echo "6. Initializing production database..."
+echo "   Location: $INSTALL_DIR/backend/instance/wg_dashboard.db"
 python -c "from app import create_app; app = create_app(); app.app_context().push(); from models import db; db.create_all()"
+if [ -f backend/instance/wg_dashboard.db ]; then
+    echo "   ✓ Production database created successfully"
+    ls -lh backend/instance/wg_dashboard.db
+else
+    echo "   ⚠ WARNING: Production database not found!"
+fi
 
 echo ""
 echo "6b. Creating mock database for testing..."
+echo "   Location: $INSTALL_DIR/backend/instance/wg_dashboard_mock.db"
 WG_MOCK_MODE=true WG_MOCK_SCENARIO=mixed python3 create_mock_db.py
-echo "Mock database created with 'mixed' scenario"
+if [ -f backend/instance/wg_dashboard_mock.db ]; then
+    echo "   ✓ Mock database created successfully"
+    ls -lh backend/instance/wg_dashboard_mock.db
+else
+    echo "   ⚠ WARNING: Mock database not found!"
+    echo "   You may need to create it manually later with:"
+    echo "   cd $INSTALL_DIR/backend && WG_MOCK_MODE=true WG_MOCK_SCENARIO=mixed python3 create_mock_db.py"
+fi
 
 echo ""
 echo "7. Creating admin user..."
@@ -126,6 +141,19 @@ echo "=================================="
 echo "Installation Complete!"
 echo "=================================="
 echo ""
+echo "Database Locations:"
+echo "-------------------"
+if [ -f $INSTALL_DIR/backend/instance/wg_dashboard.db ]; then
+    echo "✓ Production DB: $INSTALL_DIR/backend/instance/wg_dashboard.db"
+else
+    echo "✗ Production DB: NOT FOUND (this may be a problem)"
+fi
+if [ -f $INSTALL_DIR/backend/instance/wg_dashboard_mock.db ]; then
+    echo "✓ Mock DB:       $INSTALL_DIR/backend/instance/wg_dashboard_mock.db"
+else
+    echo "✗ Mock DB:       NOT FOUND (create manually if needed for testing)"
+fi
+echo ""
 echo "Configuration finished. Service is NOT running yet."
 echo ""
 echo "Next steps:"
@@ -140,4 +168,5 @@ echo "Useful commands:"
 echo "  - View logs: journalctl -u wg-dashboard -f"
 echo "  - Stop service: sudo systemctl stop wg-dashboard"
 echo "  - Restart service: sudo systemctl restart wg-dashboard"
+echo "  - List databases: ls -lh $INSTALL_DIR/backend/instance/"
 echo ""
