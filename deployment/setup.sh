@@ -81,8 +81,19 @@ else
 fi
 
 echo ""
-echo "7. Creating admin user..."
-python create_admin.py
+echo "7. Creating admin user for PRODUCTION database..."
+echo "   Note: Mock database already has admin user (username: admin, password: admin)"
+echo ""
+echo "   Do you want to create an admin user for the production database now?"
+echo "   (You can skip this and create it later if you're only using mock mode)"
+read -p "   Create admin user? [Y/n]: " create_admin_choice
+
+if [[ "$create_admin_choice" =~ ^[Nn]$ ]]; then
+    echo "   Skipped. You can create an admin user later with:"
+    echo "   cd $INSTALL_DIR/backend && source venv/bin/activate && python create_admin.py"
+else
+    python create_admin.py
+fi
 
 echo ""
 echo "8. Installing frontend dependencies..."
@@ -150,9 +161,19 @@ else
 fi
 if [ -f $INSTALL_DIR/backend/instance/wg_dashboard_mock.db ]; then
     echo "✓ Mock DB:       $INSTALL_DIR/backend/instance/wg_dashboard_mock.db"
+    echo "                 Admin login: username=admin, password=admin"
 else
     echo "✗ Mock DB:       NOT FOUND (create manually if needed for testing)"
 fi
+echo ""
+echo "Mock Mode Testing:"
+echo "------------------"
+echo "To test in mock mode (no WireGuard required):"
+echo "1. Edit $INSTALL_DIR/backend/.env and set:"
+echo "   WG_MOCK_MODE=true"
+echo "   WG_MOCK_SCENARIO=mixed"
+echo "2. Start the service: sudo systemctl start wg-dashboard"
+echo "3. Login with: username=admin, password=admin"
 echo ""
 echo "Configuration finished. Service is NOT running yet."
 echo ""

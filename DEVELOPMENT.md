@@ -45,6 +45,12 @@ Flask will run on `http://localhost:5000` (but you won't access this directly)
 WG_MOCK_MODE=true WG_MOCK_SCENARIO=mixed python3 create_mock_db.py
 ```
 
+**Mock Database Credentials:**
+- Username: `admin`
+- Password: `admin`
+
+(These are hardcoded in the mock database for easy testing)
+
 **Terminal 2 - Frontend (Vite)**
 ```bash
 cd frontend
@@ -182,9 +188,15 @@ WG_MOCK_MODE=true WG_MOCK_SCENARIO=empty python3 create_mock_db.py
 ```
 
 **Note:** Creating a mock database will drop all existing data in that database. The script creates:
-- 1 admin user (username: admin, password: admin)
-- 3 mock clients (Acme Corp, TechStart Inc, Legacy Systems Ltd)
-- Peers with appropriate client assignments and router flags
+- **1 admin user** (username: `admin`, password: `admin`)
+- **3 mock clients** (Acme Corp, TechStart Inc, Legacy Systems Ltd)
+- **Peers** with appropriate client assignments and router flags (count depends on scenario)
+
+**Important:** The admin credentials are hardcoded in mock mode for convenience:
+- Username: `admin`
+- Password: `admin`
+
+Production database has separate admin credentials that you create during deployment.
 
 ### Mock Database Location
 
