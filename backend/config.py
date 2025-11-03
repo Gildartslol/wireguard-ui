@@ -47,14 +47,18 @@ class Config:
         """Initialize application with this config"""
         # Set database URI dynamically based on current environment
         if not app.config.get('SQLALCHEMY_DATABASE_URI'):
-            # Check if DATABASE_URI is explicitly set
-            if os.getenv('DATABASE_URI'):
+            # Check mock mode FIRST - it takes precedence
+            mock_mode = os.getenv('WG_MOCK_MODE', 'false').lower() == 'true'
+
+            if mock_mode:
+                # Mock mode always uses mock database
+                app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///wg_dashboard_mock.db'
+            elif os.getenv('DATABASE_URI'):
+                # Production mode with explicit DATABASE_URI
                 app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URI')
             else:
-                # Otherwise, determine based on mock mode
-                mock_mode = os.getenv('WG_MOCK_MODE', 'false').lower() == 'true'
-                db_name = 'wg_dashboard_mock.db' if mock_mode else 'wg_dashboard.db'
-                app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{db_name}'
+                # Production mode with default database
+                app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///wg_dashboard.db'
 
 
 class DevelopmentConfig(Config):
