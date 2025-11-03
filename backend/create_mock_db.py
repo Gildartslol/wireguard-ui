@@ -291,13 +291,6 @@ def seed_scenario_mixed(admin_id, clients):
 def create_mock_database():
     """Main function to create and populate mock database"""
 
-    # Verify mock mode is enabled
-    mock_mode = os.getenv('WG_MOCK_MODE', 'false').lower() == 'true'
-    if not mock_mode:
-        logger.error("WG_MOCK_MODE must be set to 'true' to create mock database")
-        logger.error("Usage: WG_MOCK_MODE=true WG_MOCK_SCENARIO=mixed python3 create_mock_db.py")
-        sys.exit(1)
-
     scenario = os.getenv('WG_MOCK_SCENARIO', 'mixed')
     logger.info(f"Creating mock database for scenario: {scenario}")
 
@@ -305,6 +298,14 @@ def create_mock_database():
     app = create_app()
 
     with app.app_context():
+        # OVERRIDE database URI to explicitly use mock database file
+        # This script ALWAYS creates wg_dashboard_mock.db regardless of environment
+        app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///wg_dashboard_mock.db'
+
+        # Reinitialize db with the correct URI
+        from models import db as db_instance
+        db_instance.init_app(app)
+
         # Show where database will be created
         db_uri = app.config['SQLALCHEMY_DATABASE_URI']
         logger.info(f"Database URI: {db_uri}")

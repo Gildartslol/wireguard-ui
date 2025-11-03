@@ -42,7 +42,9 @@ Flask will run on `http://localhost:5000` (but you won't access this directly)
 
 **Note:** Mock mode automatically switches to `wg_dashboard_mock.db`. If the mock database doesn't exist, create it with:
 ```bash
-WG_MOCK_MODE=true WG_MOCK_SCENARIO=mixed python3 create_mock_db.py
+# WG_MOCK_SCENARIO controls which scenario data to load (empty, connected, mixed, disconnected)
+# The script always creates wg_dashboard_mock.db regardless of WG_MOCK_MODE
+WG_MOCK_SCENARIO=mixed python3 create_mock_db.py
 ```
 
 **Mock Database Credentials:**
@@ -180,11 +182,13 @@ Four scenarios are available via `WG_MOCK_SCENARIO`:
 cd backend
 
 # Create mock database for a specific scenario
-WG_MOCK_MODE=true WG_MOCK_SCENARIO=mixed python3 create_mock_db.py
+# The script always creates wg_dashboard_mock.db - WG_MOCK_MODE not needed
+WG_MOCK_SCENARIO=mixed python3 create_mock_db.py
 
 # Try different scenarios
-WG_MOCK_MODE=true WG_MOCK_SCENARIO=connected python3 create_mock_db.py
-WG_MOCK_MODE=true WG_MOCK_SCENARIO=empty python3 create_mock_db.py
+WG_MOCK_SCENARIO=connected python3 create_mock_db.py
+WG_MOCK_SCENARIO=empty python3 create_mock_db.py
+WG_MOCK_SCENARIO=disconnected python3 create_mock_db.py
 ```
 
 **Note:** Creating a mock database will drop all existing data in that database. The script creates:
@@ -253,12 +257,12 @@ ls -la /opt/wireguard-ui/
 - Check logs show "MOCK MODE": `sudo journalctl -u wg-dashboard -f`
 - Remember: shell exports don't work with systemd, must use `.env`
 - Ensure mock database exists: `ls -lh backend/instance/wg_dashboard_mock.db`
-- If missing, create it: `WG_MOCK_MODE=true WG_MOCK_SCENARIO=mixed python3 backend/create_mock_db.py`
+- If missing, create it: `WG_MOCK_SCENARIO=mixed python3 backend/create_mock_db.py`
 
 **No peers showing in mock mode:**
 - Check that mock database was created: `ls -lh backend/instance/wg_dashboard_mock.db`
 - Verify scenario has peers: `empty` scenario has 0 peers, try `mixed` instead
-- Recreate mock database with desired scenario
+- Recreate mock database: `cd backend && WG_MOCK_SCENARIO=mixed python3 create_mock_db.py`
 
 **"readonly database" errors:**
 - Check permissions: `ls -lh /opt/wireguard-ui/backend/instance/`

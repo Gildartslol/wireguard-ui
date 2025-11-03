@@ -76,7 +76,7 @@ fi
 echo ""
 echo "6b. Creating mock database for testing..."
 echo "   Location: $INSTALL_DIR/backend/instance/wg_dashboard_mock.db"
-if WG_MOCK_MODE=true WG_MOCK_SCENARIO=mixed python3 create_mock_db.py 2>&1 | tee /tmp/mock_db_creation.log; then
+if WG_MOCK_SCENARIO=mixed python3 create_mock_db.py 2>&1 | tee /tmp/mock_db_creation.log; then
     if [ -f backend/instance/wg_dashboard_mock.db ]; then
         echo "   ✓ Mock database created successfully"
         ls -lh backend/instance/wg_dashboard_mock.db
@@ -91,7 +91,7 @@ else
     echo "   To create it manually after installation completes:"
     echo "   1. cd $INSTALL_DIR/backend"
     echo "   2. source venv/bin/activate"
-    echo "   3. WG_MOCK_MODE=true WG_MOCK_SCENARIO=mixed python3 create_mock_db.py"
+    echo "   3. WG_MOCK_SCENARIO=mixed python3 create_mock_db.py"
     echo "   4. deactivate"
     echo "   5. cd $INSTALL_DIR && sudo bash deployment/fix_db_permissions.sh"
 fi
@@ -189,7 +189,7 @@ else
     echo ""
     echo "  To create mock database for testing:"
     echo "  1. cd $INSTALL_DIR/backend && source venv/bin/activate"
-    echo "  2. WG_MOCK_MODE=true WG_MOCK_SCENARIO=mixed python3 create_mock_db.py"
+    echo "  2. WG_MOCK_SCENARIO=mixed python3 create_mock_db.py"
     echo "  3. deactivate"
     echo "  4. cd $INSTALL_DIR && sudo bash deployment/fix_db_permissions.sh"
     echo "  5. sudo systemctl restart wg-dashboard"
