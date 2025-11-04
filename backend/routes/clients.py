@@ -147,8 +147,12 @@ def update_client(client_id):
         if not data:
             return jsonify({'error': 'No data provided'}), 400
 
+        # Prevent editing system client core properties
+        if client.is_system and ('name' in data or 'is_system' in data):
+            return jsonify({'error': 'Cannot modify system client name or system flag'}), 403
+
         # Update fields
-        if 'name' in data:
+        if 'name' in data and not client.is_system:
             client.name = data['name']
         if 'subnet_range' in data:
             client.subnet_range = data['subnet_range']
@@ -158,6 +162,8 @@ def update_client(client_id):
             client.description = data['description']
         if 'is_active' in data:
             client.is_active = data['is_active']
+        # Never allow changing is_system flag
+        # (omit is_system from updates entirely)
 
         db.session.commit()
 
@@ -180,9 +186,11 @@ def delete_client(client_id):
         client_id: Client UUID
 
     Note: Due to ondelete='SET NULL', associated peers will be orphaned (not deleted)
+    System clients (is_system=True) cannot be deleted.
 
     Returns:
         200: Client deleted successfully
+        403: Cannot delete system client
         404: Client not found
         500: Error deleting client
     """
@@ -191,6 +199,10 @@ def delete_client(client_id):
 
         if not client:
             return jsonify({'error': 'Client not found'}), 404
+
+        # Prevent deletion of system clients
+        if client.is_system:
+            return jsonify({'error': 'Cannot delete system client'}), 403
 
         # Foreign key constraint with SET NULL will orphan peers
         db.session.delete(client)

@@ -60,32 +60,32 @@
 
         <div class="text-sm">
           <span class="font-semibold">Allowed IPs:</span>
-          <div class="mt-1">{{ formatAllowedIPs(peer.allowed_ips) }}</div>
+          <div class="mt-1">{{ formatAllowedIPs(peer.allowed_ips) || 'N/A' }}</div>
         </div>
 
-        <!-- Real-time Connection Data -->
-        <div v-if="peer.endpoint" class="text-sm">
+        <!-- Real-time Connection Data - Always shown for uniform layout -->
+        <div class="text-sm">
           <span class="font-semibold">Endpoint:</span>
-          <div class="mt-1">{{ peer.endpoint }}</div>
+          <div class="mt-1">{{ peer.endpoint || 'N/A' }}</div>
         </div>
 
-        <div v-if="peer.latest_handshake" class="text-sm">
+        <div class="text-sm">
           <span class="font-semibold">Last Handshake:</span>
           <div class="mt-1">{{ formatHandshake(peer.latest_handshake) }}</div>
         </div>
 
-        <div v-if="peer.transfer_rx !== undefined || peer.transfer_tx !== undefined" class="text-sm">
+        <div class="text-sm">
           <span class="font-semibold">Transfer:</span>
           <div class="mt-1">
-            <span class="text-xs">↓ {{ formatBytes(peer.transfer_rx) }}</span>
+            <span class="text-xs">↓ {{ formatBytes(peer.transfer_rx || 0) }}</span>
             <span class="mx-2">|</span>
-            <span class="text-xs">↑ {{ formatBytes(peer.transfer_tx) }}</span>
+            <span class="text-xs">↑ {{ formatBytes(peer.transfer_tx || 0) }}</span>
           </div>
         </div>
 
-        <div v-if="peer.description" class="text-sm">
+        <div class="text-sm">
           <span class="font-semibold">Description:</span>
-          <div class="mt-1">{{ peer.description }}</div>
+          <div class="mt-1">{{ peer.description || 'N/A' }}</div>
         </div>
 
         <div class="text-sm">

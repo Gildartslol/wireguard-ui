@@ -16,6 +16,9 @@
             <router-link to="/peers" active-class="active">Peers</router-link>
           </li>
           <li>
+            <router-link to="/clients" active-class="active">Clients</router-link>
+          </li>
+          <li>
             <router-link to="/history" active-class="active">History</router-link>
           </li>
           <li>
