@@ -56,7 +56,10 @@
 
 <script setup>
 import { ref } from 'vue'
+import { useToast } from '../composables/useToast'
 import api from '../services/api'
+
+const toast = useToast()
 
 const config = ref({
   name: '',
@@ -73,9 +76,10 @@ const generateKeys = async () => {
     const response = await api.generateKeys()
     config.value.privateKey = response.data.private_key
     publicKey.value = response.data.public_key
+    toast.success('Keys generated successfully')
   } catch (error) {
     console.error('Error generating keys:', error)
-    alert('Failed to generate keys')
+    toast.error('Failed to generate keys')
   }
 }
 
@@ -96,7 +100,7 @@ PersistentKeepalive = 25
 
 const copyConfig = () => {
   navigator.clipboard.writeText(generatedConfig.value)
-  alert('Configuration copied to clipboard!')
+  toast.success('Configuration copied to clipboard!')
 }
 
 const downloadConfig = () => {

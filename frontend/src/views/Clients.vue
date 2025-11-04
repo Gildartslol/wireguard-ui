@@ -124,7 +124,7 @@
             </button>
             <button
               v-if="!client.is_system"
-              @click="deleteClient(client.id)"
+              @click="confirmDeleteClient(client.id)"
               class="btn btn-sm btn-error"
             >
               Delete
@@ -173,17 +173,35 @@
         <button @click="closeAddModal">close</button>
       </form>
     </dialog>
+
+    <!-- Delete confirmation modal -->
+    <ConfirmModal
+      :show="showDeleteModal"
+      title="Delete Client"
+      message="Are you sure you want to delete this client? Associated peers will become unassigned. This action cannot be undone."
+      confirm-text="Delete"
+      cancel-text="Cancel"
+      confirm-class="btn-error"
+      @confirm="deleteClient"
+      @cancel="cancelDeleteClient"
+    />
   </div>
 </template>
 
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
+import ConfirmModal from '../components/ConfirmModal.vue'
+import { useToast } from '../composables/useToast'
 import api from '../services/api'
+
+const toast = useToast()
 
 const clients = ref([])
 const loading = ref(false)
 const showAddModal = ref(false)
 const submitting = ref(false)
+const showDeleteModal = ref(false)
+const clientToDelete = ref(null)
 const editingClient = ref({})
 const editForm = reactive({
   name: '',
@@ -206,7 +224,7 @@ const fetchClients = async () => {
     clients.value = response.data
   } catch (error) {
     console.error('Error fetching clients:', error)
-    alert('Failed to fetch clients')
+    toast.error('Failed to fetch clients')
   } finally {
     loading.value = false
   }
@@ -236,11 +254,12 @@ const saveEdit = async (client) => {
       location: editForm.location,
       description: editForm.description
     })
+    toast.success('Client updated successfully')
     cancelEdit(client)
     await fetchClients()
   } catch (error) {
     console.error('Error updating client:', error)
-    alert(error.response?.data?.error || 'Failed to update client')
+    toast.error(error.response?.data?.error || 'Failed to update client')
   }
 }
 
@@ -249,10 +268,11 @@ const toggleActive = async (client) => {
     await api.updateClient(client.id, {
       is_active: !client.is_active
     })
+    toast.success(`Client ${!client.is_active ? 'activated' : 'deactivated'} successfully`)
     await fetchClients()
   } catch (error) {
     console.error('Error toggling client active status:', error)
-    alert('Failed to update client status')
+    toast.error('Failed to update client status')
   }
 }
 
@@ -260,26 +280,41 @@ const addClient = async () => {
   submitting.value = true
   try {
     await api.createClient(newClient.value)
+    toast.success('Client added successfully')
     closeAddModal()
     fetchClients()
   } catch (error) {
     console.error('Error adding client:', error)
-    alert(error.response?.data?.error || 'Failed to add client')
+    toast.error(error.response?.data?.error || 'Failed to add client')
   } finally {
     submitting.value = false
   }
 }
 
-const deleteClient = async (clientId) => {
-  if (!confirm('Are you sure you want to delete this client? Associated peers will become unassigned.')) return
+const confirmDeleteClient = (clientId) => {
+  clientToDelete.value = clientId
+  showDeleteModal.value = true
+}
+
+const deleteClient = async () => {
+  if (!clientToDelete.value) return
 
   try {
-    await api.deleteClient(clientId)
+    await api.deleteClient(clientToDelete.value)
+    toast.success('Client deleted successfully')
     fetchClients()
   } catch (error) {
     console.error('Error deleting client:', error)
-    alert(error.response?.data?.error || 'Failed to delete client')
+    toast.error(error.response?.data?.error || 'Failed to delete client')
+  } finally {
+    showDeleteModal.value = false
+    clientToDelete.value = null
   }
+}
+
+const cancelDeleteClient = () => {
+  showDeleteModal.value = false
+  clientToDelete.value = null
 }
 
 const closeAddModal = () => {

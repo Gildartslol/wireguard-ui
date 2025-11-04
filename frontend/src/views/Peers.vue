@@ -7,6 +7,37 @@
       </button>
     </div>
 
+    <!-- Search bar -->
+    <div class="mb-6">
+      <div class="form-control">
+        <div class="input-group">
+          <span class="bg-base-200 px-4 flex items-center">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+          </span>
+          <input
+            v-model="searchQuery"
+            type="text"
+            placeholder="Search peers by name, public key, IP, client..."
+            class="input input-bordered w-full"
+          />
+          <button
+            v-if="searchQuery"
+            @click="searchQuery = ''"
+            class="btn btn-square"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+        <label v-if="searchQuery" class="label">
+          <span class="label-text-alt">Showing {{ filteredPeersCount }} of {{ totalPeersCount }} peers</span>
+        </label>
+      </div>
+    </div>
+
     <!-- Peers list -->
     <div v-if="loading" class="text-center py-8">
       <span class="loading loading-spinner loading-lg"></span>
@@ -44,7 +75,7 @@
               v-for="peer in group.peers"
               :key="peer.id"
               :peer="peer"
-              @delete="deletePeer"
+              @delete="confirmDeletePeer"
               @config="downloadConfig"
               @update="updatePeer"
             />
@@ -69,7 +100,7 @@
               v-for="peer in groupedPeers.unassigned"
               :key="peer.id"
               :peer="peer"
-              @delete="deletePeer"
+              @delete="confirmDeletePeer"
               @config="downloadConfig"
               @update="updatePeer"
             />
@@ -143,6 +174,18 @@
         <button @click="closeAddModal">close</button>
       </form>
     </dialog>
+
+    <!-- Delete confirmation modal -->
+    <ConfirmModal
+      :show="showDeleteModal"
+      title="Delete Peer"
+      message="Are you sure you want to delete this peer? This action cannot be undone."
+      confirm-text="Delete"
+      cancel-text="Cancel"
+      confirm-class="btn-error"
+      @confirm="deletePeer"
+      @cancel="cancelDeletePeer"
+    />
   </div>
 </template>
 
@@ -150,6 +193,10 @@
 import { ref, computed, onMounted } from 'vue'
 import api from '../services/api'
 import PeerCard from '../components/PeerCard.vue'
+import ConfirmModal from '../components/ConfirmModal.vue'
+import { useToast } from '../composables/useToast'
+
+const toast = useToast()
 
 const peers = ref([])
 const clients = ref([])
@@ -157,6 +204,9 @@ const loading = ref(false)
 const showAddModal = ref(false)
 const submitting = ref(false)
 const generatedKeys = ref({})
+const searchQuery = ref('')
+const showDeleteModal = ref(false)
+const peerToDelete = ref(null)
 const newPeer = ref({
   name: '',
   public_key: '',
@@ -171,14 +221,32 @@ const nonSystemClients = computed(() => {
   return clients.value.filter(client => !client.is_system)
 })
 
-// Group peers by client
+// Filter peers based on search query
+const filteredPeers = computed(() => {
+  if (!searchQuery.value.trim()) {
+    return peers.value
+  }
+
+  const query = searchQuery.value.toLowerCase()
+  return peers.value.filter(peer => {
+    return (
+      peer.name?.toLowerCase().includes(query) ||
+      peer.public_key?.toLowerCase().includes(query) ||
+      peer.description?.toLowerCase().includes(query) ||
+      peer.allowed_ips?.toLowerCase().includes(query) ||
+      peer.client?.name?.toLowerCase().includes(query)
+    )
+  })
+})
+
+// Group peers by client (with search filtering)
 const groupedPeers = computed(() => {
   const groups = {
     unassigned: [],
     clients: {}
   }
 
-  peers.value.forEach(peer => {
+  filteredPeers.value.forEach(peer => {
     if (!peer.client_id || !peer.client) {
       groups.unassigned.push(peer)
     } else {
@@ -209,6 +277,10 @@ const groupedPeers = computed(() => {
   return groups
 })
 
+// Total peers count for search results
+const totalPeersCount = computed(() => peers.value.length)
+const filteredPeersCount = computed(() => filteredPeers.value.length)
+
 const fetchPeers = async () => {
   loading.value = true
   try {
@@ -216,7 +288,7 @@ const fetchPeers = async () => {
     peers.value = response.data
   } catch (error) {
     console.error('Error fetching peers:', error)
-    alert('Failed to fetch peers')
+    toast.error('Failed to fetch peers')
   } finally {
     loading.value = false
   }
@@ -236,9 +308,10 @@ const generateKeys = async () => {
     const response = await api.generateKeys()
     generatedKeys.value = response.data
     newPeer.value.public_key = response.data.public_key
+    toast.success('Keys generated successfully')
   } catch (error) {
     console.error('Error generating keys:', error)
-    alert('Failed to generate keys')
+    toast.error('Failed to generate keys')
   }
 }
 
@@ -246,11 +319,12 @@ const addPeer = async () => {
   submitting.value = true
   try {
     await api.createPeer(newPeer.value)
+    toast.success('Peer added successfully')
     closeAddModal()
     fetchPeers()
   } catch (error) {
     console.error('Error adding peer:', error)
-    alert(error.response?.data?.error || 'Failed to add peer')
+    toast.error(error.response?.data?.error || 'Failed to add peer')
   } finally {
     submitting.value = false
   }
@@ -259,28 +333,43 @@ const addPeer = async () => {
 const updatePeer = async (peerId, updates) => {
   try {
     await api.updatePeer(peerId, updates)
+    toast.success('Peer updated successfully')
     await fetchPeers()
   } catch (error) {
     console.error('Error updating peer:', error)
-    alert(error.response?.data?.error || 'Failed to update peer')
+    toast.error(error.response?.data?.error || 'Failed to update peer')
   }
 }
 
-const deletePeer = async (peerId) => {
-  if (!confirm('Are you sure you want to delete this peer?')) return
+const confirmDeletePeer = (peerId) => {
+  peerToDelete.value = peerId
+  showDeleteModal.value = true
+}
+
+const deletePeer = async () => {
+  if (!peerToDelete.value) return
 
   try {
-    await api.deletePeer(peerId)
+    await api.deletePeer(peerToDelete.value)
+    toast.success('Peer deleted successfully')
     fetchPeers()
   } catch (error) {
     console.error('Error deleting peer:', error)
-    alert('Failed to delete peer')
+    toast.error('Failed to delete peer')
+  } finally {
+    showDeleteModal.value = false
+    peerToDelete.value = null
   }
+}
+
+const cancelDeletePeer = () => {
+  showDeleteModal.value = false
+  peerToDelete.value = null
 }
 
 const downloadConfig = async (peer) => {
   if (!generatedKeys.value.private_key) {
-    alert('Please generate keys for this peer first')
+    toast.warning('Please generate keys for this peer first')
     return
   }
 
@@ -293,9 +382,10 @@ const downloadConfig = async (peer) => {
     document.body.appendChild(link)
     link.click()
     link.remove()
+    toast.success('Config downloaded successfully')
   } catch (error) {
     console.error('Error downloading config:', error)
-    alert('Failed to download config')
+    toast.error('Failed to download config')
   }
 }
 
